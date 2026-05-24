@@ -1,20 +1,26 @@
 ﻿import { useParams, useNavigate } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useMutation } from "@tanstack/react-query"
 import { Card, Spin, Typography, Button, Empty, List, Space, Tag, message, Modal } from "antd"
 import { ArrowLeftOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons"
 import { bookApi } from "../api"
-import dayjs from "dayjs"
 
 const { Title, Text, Paragraph } = Typography
 
 export default function BookDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+
+  const { data: bookData, isLoading } = useQuery({
     queryKey: ["book", id],
     queryFn: () => bookApi.get(id!),
+    enabled: !!id,
+  })
+
+
+  const { data: highlightsData } = useQuery({
+    queryKey: ["book", id, "highlights"],
+    queryFn: () => bookApi.getHighlights(id!, { page_size: 500 }),
     enabled: !!id,
   })
 
@@ -47,11 +53,14 @@ export default function BookDetailPage() {
     )
   }
 
-  const book = data?.data
+  const book = bookData?.data
 
   if (!book) {
     return <Empty description="书籍不存在" />
   }
+
+  const highlights = highlightsData?.data?.items || []
+
 
   return (
     <div>
@@ -85,16 +94,16 @@ export default function BookDetailPage() {
       </Card>
 
       <Title level={4} style={{ marginTop: 24 }}>
-        我的笔记 ({book.highlight_count})
+        我的笔记 ({highlights.length})
       </Title>
 
-      {book.highlight_count === 0 ? (
+      {highlights.length === 0 ? (
         <Empty description="还没有笔记" />
       ) : (
         <List
           itemLayout="vertical"
-          dataSource={[]}
-          renderItem={(item: any) => (
+          dataSource={highlights}
+          renderItem={(item) => (
             <Card className="highlight-card" style={{ marginBottom: 12 }}>
               <Paragraph style={{ color: "white", marginBottom: 8 }}>
                 {item.content}

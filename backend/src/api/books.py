@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.schemas import BookListResponse, BookResponse
 from src.schemas.book import BookCreate
+from src.schemas.highlight import HighlightResponse, HighlightListResponse
+from src.services.highlight_service import highlight_service
 from src.services.book_service import book_service
 from src.utils.logging import get_logger
 
@@ -111,7 +113,6 @@ async def delete_book(
     db: Session = Depends(get_db),
 ) -> None:
     """Delete a book.
-
     Args:
         book_id: Book UUID.
         db: Database session.
@@ -121,3 +122,41 @@ async def delete_book(
     deleted = book_service.delete(db, book_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+
+
+@router.get("/{book_id}/highlights", response_model=HighlightListResponse)
+async def get_book_highlights(
+    book_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> HighlightListResponse:
+    """Get all highlights for a specific book.
+    
+    Args:
+        book_id: Book UUID.
+        page: Page number.
+        page_size: Items per page.
+        db: Database session.
+    
+    Returns:
+        Paginated list of highlights.
+    """
+    logger.info("Get highlights for book: %s", book_id)
+    
+    # Verify book exists
+    book = book_service.get_by_id(db, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+    
+    skip = (page - 1) * page_size
+    highlights, total = highlight_service.get_by_book(db, book_id, skip=skip, limit=page_size)
+    
+    items = [HighlightResponse.model_validate(h) for h in highlights]
+    
+    return HighlightListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

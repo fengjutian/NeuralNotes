@@ -79,6 +79,9 @@ export const bookApi = {
   
   delete: (id: string) =>
     api.delete("/books/" + id),
+
+  getHighlights: (id: string, params?: { page?: number; page_size?: number }) =>
+    api.get<HighlightListResponse>("/books/" + id + "/highlights", { params }),
 }
 
 export const importApi = {
