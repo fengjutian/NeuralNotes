@@ -6,6 +6,7 @@ import {
   UploadOutlined,
   SearchOutlined,
   UserOutlined,
+  ApartmentOutlined,
 } from "@ant-design/icons"
 
 const { Sider, Content } = Layout
@@ -41,6 +42,12 @@ const menuItems: MenuItem[] = [
     icon: <UserOutlined />,
     label: "画像",
     path: "/profile",
+  },
+  {
+    key: "/graph",
+    icon: <ApartmentOutlined />,
+    label: "图谱",
+    path: "/graph",
   },
 ]
 

@@ -1,58 +1,29 @@
 import { useQuery } from "@tanstack/react-query"
-import { Card, Spin, Empty, Typography, Tag, List, Space } from "antd"
-import { api } from "../api"
-import { useSearchParams } from "react-router-dom"
+import { Card, Spin, Empty, Typography, Tag, Space } from "antd"
+import api from "../api"
 
 const { Title, Text } = Typography
 
-interface GraphNode {
-  id: string
-  type: "book" | "author" | "concept" | "highlight"
-  label: string
-  properties?: Record<string, any>
-}
-
-interface GraphEdge {
-  source: string
-  target: string
-  type: string
-}
-
-
 export default function GraphPage() {
-  const [searchParams] = useSearchParams()
-  const bookId = searchParams.get("book_id")
-
   const { data, isLoading } = useQuery({
-    queryKey: ["graph", bookId],
-    queryFn: () => api.get<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/graph" + (bookId ? `?book_id=${bookId}` : "")),
+    queryKey: ["graph"],
+    queryFn: () => api.get("/graph/"),
   })
 
   if (isLoading) {
-    return (
-      <div style={{ textAlign: "center", padding: 50 }}>
-        <Spin size="large" />
-      </div>
-    )
+    return <div style={{ textAlign: "center", padding: 50 }}><Spin size="large" /></div>
   }
 
-  const graph = data?.data
-  const nodes = graph?.nodes || []
-  const edges = graph?.edges || []
-
-  // Group nodes by type
-  const books = nodes.filter(n => n.type === "book")
-  const authors = nodes.filter(n => n.type === "author")
-  const concepts = nodes.filter(n => n.type === "concept")
-  const highlights = nodes.filter(n => n.type === "highlight")
-
+  const nodes = data?.data?.nodes || []
+  const edges = data?.data?.edges || []
+  const books = nodes.filter((n: any) => n.type === "book")
+  const concepts = nodes.filter((n: any) => n.type === "concept")
+  const authors = nodes.filter((n: any) => n.type === "author")
+  const highlights = nodes.filter((n: any) => n.type === "highlight")
 
   return (
     <div>
       <Title level={2}>📊 知识图谱</Title>
-
-      <Text type="secondary">展示书籍、作者和概念之间的关系</Text>
-
 
       {nodes.length === 0 ? (
         <Empty style={{ marginTop: 50 }}
@@ -60,82 +31,75 @@ export default function GraphPage() {
             <div>
               <p>暂无图谱数据</p>
               <Text type="secondary">
-                请先导入书籍，然后使用 AI 分析功能提取概念
+                请先在 Neo4j 中创建数据，或在 Swagger 文档中调用 POST /api/v1/analyze 进行 AI 分析
               </Text>
             </div>
           }
         />
       ) : (
         <div style={{ marginTop: 24 }}>
-          {/* Stats */}
+          {/* 统计 */}
           <Card size="small" style={{ marginBottom: 16 }}>
-            <Space>
-              <Tag color="blue">书籍: {books.length}</Tag>
-              <Tag color="green">作者: {authors.length}</Tag>
-              <Tag color="purple">概念: {concepts.length}</Tag>
-              <Tag color="orange">笔记: {highlights.length}</Tag>
-              <Tag color="red">关系: {edges.length}</Tag>
+            <Space wrap>
+              <Tag color="blue">📚 书籍 {books.length}</Tag>
+              <Tag color="green">✍️ 作者 {authors.length}</Tag>
+              <Tag color="purple">🧠 概念 {concepts.length}</Tag>
+              <Tag color="orange">💬 笔记 {highlights.length}</Tag>
+              <Tag color="red">🔗 关系 {edges.length}</Tag>
             </Space>
           </Card>
 
-          {/* Books */}
+          {/* 概念云 */}
+          {concepts.length > 0 && (
+            <Card title="🧠 概念云" size="small" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {concepts.map((c: any) => (
+                  <Tag
+                    key={c.id}
+                    color="purple"
+                    style={{ fontSize: 14, padding: "4px 12px", cursor: "pointer" }}
+                  >
+                    {c.label}
+                    {c.properties?.frequency && (
+                      <span style={{ marginLeft: 4, opacity: 0.7 }}>
+                        ×{c.properties.frequency}
+                      </span>
+                    )}
+                  </Tag>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* 书籍列表 */}
           {books.length > 0 && (
             <Card title="📚 书籍" size="small" style={{ marginBottom: 16 }}>
-              <List
-                size="small"
-                dataSource={books.slice(0, 10)}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: "8px 0" }}>
-                    <Text strong>{item.label}</Text>
-                    {item.properties?.category && (
-                      <Tag style={{ marginLeft: 8 }}>{item.properties.category}</Tag>
-                    )}
-                  </List.Item>
-                )}
-              />
-            </Card>
-          )}
-
-          {/* Authors */}
-          {authors.length > 0 && (
-            <Card title="✍️ 作者" size="small" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {authors.map(author => (
-                  <Tag key={author.id} color="green" style={{ fontSize: 14, padding: "4px 12px" }}>
-                    {author.label}
+                {books.map((b: any) => (
+                  <Tag key={b.id} color="blue" style={{ fontSize: 14, padding: "4px 12px" }}>
+                    {b.label}
                   </Tag>
                 ))}
               </div>
             </Card>
           )}
 
-          {/* Concepts */}
-          {concepts.length > 0 && (
-            <Card title="🧠 概念" size="small" style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {concepts.map(concept => (
-                  <Tag key={concept.id} color="purple" style={{ fontSize: 14, padding: "4px 12px" }}>
-                    {concept.label}
-                  </Tag>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Highlights */}
-          {highlights.length > 0 && (
-            <Card title="💬 笔记" size="small">
-              <List
-                size="small"
-                dataSource={highlights.slice(0, 20)}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: "8px 0" }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {item.label?.substring(0, 100)}...
-                    </Text>
-                  </List.Item>
-                )}
-              />
+          {/* 关系列表 */}
+          {edges.length > 0 && (
+            <Card title="🔗 关系" size="small">
+              <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                {edges.slice(0, 50).map((edge: any, idx: number) => {
+                  const sourceNode = nodes.find((n: any) => n.id === edge.source)
+                  const targetNode = nodes.find((n: any) => n.id === edge.target)
+                  return (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Tag>{sourceNode?.label || edge.source}</Tag>
+                      <span style={{ color: "#999" }}>→ {edge.type} →</span>
+                      <Tag>{targetNode?.label || edge.target}</Tag>
+                    </div>
+                  )
+                })}
+              </Space>
             </Card>
           )}
         </div>

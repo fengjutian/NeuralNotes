@@ -7,6 +7,7 @@ import BookDetailPage from './pages/BookDetailPage'
 import ImportPage from './pages/ImportPage'
 import SearchPage from './pages/SearchPage'
 import ProfilePage from './pages/ProfilePage'
+import GraphPage from './pages/GraphPage'
 
 const { Content } = Layout
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/import" element={<ImportPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/graph" element={<GraphPage />} />
         </Routes>
       </Content>
     </AppLayout>
