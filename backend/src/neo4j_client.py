@@ -80,10 +80,17 @@ class Neo4jClient:
 
         Returns:
             List of result records as dictionaries.
+
+        Raises:
+            GraphConnectionException: If Neo4j service is unavailable.
         """
-        with self.session() as session:
-            result = session.run(query, parameters or {})
-            return [record.data() for record in result]
+        try:
+            with self.session() as session:
+                result = session.run(query, parameters or {})
+                return [record.data() for record in result]
+        except ServiceUnavailable as e:
+            logger.error("Neo4j service unavailable: %s", str(e))
+            raise GraphConnectionException(settings.neo4j_uri) from e
 
     # Node Operations
     def create_node(
