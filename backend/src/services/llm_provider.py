@@ -146,12 +146,75 @@ class ZhipuaiProvider(BaseLLMProvider):
         return True
 
 
+class MiniMaxProvider(BaseLLMProvider):
+    """MiniMax API provider."""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "MiniMax-M2.7",
+        base_url: str = "https://api.minimax.com/v1",
+        max_retries: int = 3,
+    ) -> None:
+        self.api_key = api_key or settings.minimax_api_key
+        self.model = model
+        self.base_url = base_url or settings.minimax_base_url
+        self.max_retries = max_retries
+        self.logger = get_logger(self.__class__.__name__)
+
+    def chat_completion(
+        self,
+        messages: list[dict[str, str]],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+
+        try:
+            response = client.chat.completions.create(
+                model=model or self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+
+            content = response.choices[0].message.content or ""
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+
+            return LLMResponse(
+                content=content,
+                model=response.model,
+                usage=usage,
+            )
+
+        except RateLimitError as e:
+            self.logger.error("Rate limit exceeded")
+            raise AIRateLimitException() from e
+
+        except APIError as e:
+            self.logger.error("MiniMax API error: %s", str(e))
+            raise AIProviderException(provider="MiniMax", message=str(e)) from e
+
+    def supports_streaming(self) -> bool:
+        return True
+
+
 class LLMProvider:
     """Unified LLM provider."""
 
     PROVIDER_MAP = {
         "openai": OpenAIProvider,
         "zhipuai": ZhipuaiProvider,
+        "minimax": MiniMaxProvider,
     }
 
     def __init__(
@@ -161,7 +224,7 @@ class LLMProvider:
         **kwargs: Any,
     ) -> None:
         self.provider_name = provider or settings.ai_provider
-        self.model = model or settings.openai_model
+        self.model = model or settings.minimax_model if settings.ai_provider == "minimax" else settings.openai_model
         self.logger = get_logger(self.__class__.__name__)
 
         provider_class = self.PROVIDER_MAP.get(self.provider_name)

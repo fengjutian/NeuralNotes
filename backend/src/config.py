@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     # Zhipuai (Qwen/DeepSeek)
     zhipuai_api_key: Optional[str] = Field(default=None, alias="ZHIPUAI_API_KEY")
 
+    # MiniMax AI
+    minimax_api_key: Optional[str] = Field(default=None, alias="MINIMAX_API_KEY")
+    minimax_model: str = Field(default="MiniMax-Text-01", alias="MINIMAX_MODEL")
+    minimax_base_url: str = Field(
+        default="https://api.minimax.com/v1",
+        alias="MINIMAX_BASE_URL",
+    )
+
     # File Upload
     upload_dir: Path = Field(default=Path("./uploads"), alias="UPLOAD_DIR")
     max_file_size_mb: int = Field(default=50, alias="MAX_FILE_SIZE_MB")
