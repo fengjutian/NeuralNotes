@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql://user:password@localhost:5432/reading_graph",
+        default="mysql+pymysql://root:fjt911008@localhost:3306/reading_graph",
         alias="DATABASE_URL",
     )
 

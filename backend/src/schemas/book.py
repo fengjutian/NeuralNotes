@@ -13,7 +13,7 @@ class BookBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="Book title")
     author: str = Field(..., min_length=1, max_length=255, description="Author name")
     category: Optional[str] = Field(None, max_length=100, description="Book category")
-    isbn: Optional[str] = Field(None, max_length=20, description="ISBN number")
+    isbn: Optional[str] | int = Field(None, description="ISBN number")
     reading_time: Optional[str] = Field(None, max_length=50, description="Reading time")
     progress: Optional[float] = Field(None, ge=0, le=100, description="Progress percentage")
     reading_date: Optional[date] = Field(None, description="Reading date")
