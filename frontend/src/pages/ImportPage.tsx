@@ -43,7 +43,7 @@ export default function ImportPage() {
         <Result
           icon={<CheckCircleOutlined style={{ color: "#52c41a" }} />}
           title="导入成功！"
-          subTitle={\`已成功导入《\${result.title}》\`}
+          subTitle={"已成功导入《" + result.title + "》"}
           extra={[
             <Button type="primary" key="view" onClick={handleViewBook}>
               查看书籍
