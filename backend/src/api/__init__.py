@@ -12,7 +12,7 @@ from src.api.search import router as search_router
 from src.api.timeline import router as timeline_router
 
 # Create main API router
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter(prefix="/api/v1", redirect_slashes=False)
 
 # Include sub-routers
 api_router.include_router(import_router, prefix="/import", tags=["Import"])

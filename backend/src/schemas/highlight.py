@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 
 class HighlightBase(BaseModel):
@@ -42,7 +42,11 @@ class HighlightResponse(HighlightBase):
 
     id: uuid.UUID
     book_id: uuid.UUID
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    @field_serializer('create_time', 'created_at')
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class HighlightListResponse(BaseModel):

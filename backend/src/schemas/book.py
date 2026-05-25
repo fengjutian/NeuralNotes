@@ -1,10 +1,10 @@
 """Book schemas for API request/response validation."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 
 class BookBase(BaseModel):
@@ -44,8 +44,12 @@ class BookResponse(BookBase):
 
     id: uuid.UUID
     highlight_count: Optional[int] = Field(None, description="Number of highlights")
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class BookListResponse(BaseModel):
