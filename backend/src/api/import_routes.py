@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 # Initialize services
+markdown_parser = MarkdownParser()
 concept_extractor = ConceptExtractor()
 
 
@@ -110,17 +111,19 @@ async def import_file(
     logger.info("Created %d highlights for book %s", highlight_count, book.id)
 
     # === Generate Knowledge Graph Data ===
+    logger.info("Generating graph data for book: %s", book.id)
+    
     # 1. Create book node in Neo4j
     try:
-        graph_service.create_book_node(
+        result = graph_service.create_book_node(
             book_id=book.id,
             title=book.title,
             author=book.author,
             category=book.category,
         )
-        logger.info("Created book node in graph: %s", book.id)
+        logger.info("Created book node in graph: %s -> %s", book.id, result)
     except Exception as e:
-        logger.warning("Failed to create book node in graph: %s", str(e))
+        logger.error("Failed to create book node in graph: %s", str(e), exc_info=True)
 
     # 2. Create author node and link
     try:
@@ -128,7 +131,7 @@ async def import_file(
         graph_service.link_book_to_author(book_id=book.id, author_name=book.author)
         logger.info("Created author node and link: %s", book.author)
     except Exception as e:
-        logger.warning("Failed to create author in graph: %s", str(e))
+        logger.error("Failed to create author in graph: %s", str(e), exc_info=True)
 
     # 3. Create highlight nodes and link to book
     # 4. Extract concepts and create concept nodes
@@ -176,11 +179,11 @@ async def import_file(
                         )
                         concept_count += 1
                     except Exception as e:
-                        logger.warning("Failed to create concept %s: %s", concept_name, str(e))
+                        logger.error("Failed to create concept %s: %s", concept_name, str(e), exc_info=True)
                         db.rollback()
 
         except Exception as e:
-            logger.warning("Failed to create highlight in graph: %s", str(e))
+            logger.error("Failed to create highlight in graph: %s", str(e), exc_info=True)
 
     logger.info("Created %d concept nodes for book %s", concept_count, book.id)
 
@@ -297,7 +300,7 @@ async def import_batch(
                     except Exception:
                         db.rollback()
             except Exception as e:
-                logger.warning("Failed to create graph data for batch import: %s", str(e))
+                logger.error("Failed to create graph data for batch import: %s", str(e), exc_info=True)
 
             results.append({
                 "file": file.filename,

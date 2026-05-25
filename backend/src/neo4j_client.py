@@ -59,8 +59,14 @@ class Neo4jClient:
         Raises:
             GraphConnectionException: If not connected.
         """
+        # Auto-connect if not connected
+        if not self._driver:
+            logger.info("Neo4j driver not connected, attempting to connect...")
+            self.connect()
+        
         if not self._driver:
             raise GraphConnectionException(settings.neo4j_uri)
+        
         session = self._driver.session()
         try:
             yield session
@@ -84,13 +90,19 @@ class Neo4jClient:
         Raises:
             GraphConnectionException: If Neo4j service is unavailable.
         """
+        logger.debug("Executing query: %s with params: %s", query[:100], parameters)
         try:
             with self.session() as session:
                 result = session.run(query, parameters or {})
-                return [record.data() for record in result]
+                records = [record.data() for record in result]
+                logger.debug("Query returned %d records", len(records))
+                return records
         except ServiceUnavailable as e:
             logger.error("Neo4j service unavailable: %s", str(e))
             raise GraphConnectionException(settings.neo4j_uri) from e
+        except Exception as e:
+            logger.error("Neo4j query error: %s", str(e))
+            raise
 
     # Node Operations
     def create_node(

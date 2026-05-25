@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 
 from src.database import get_db
-from src.schemas import GraphResponse
+from src.schemas.graph import GraphResponse
 from src.services.graph_service import graph_service
 from src.services.book_service import book_service
 from src.utils.logging import get_logger
@@ -108,3 +108,53 @@ async def get_concept_details(
     logger.info("Get concept details: %s", concept_name)
     
     return graph_service.get_concept_details(concept_name)
+
+
+@router.get("/debug")
+async def debug_graph(
+    db: Session = Depends(get_db),
+) -> dict:
+    """Debug endpoint to check Neo4j connection and data.
+
+    Returns:
+        Debug information about the graph database.
+    """
+    logger.info("Debug graph endpoint called")
+    
+    # Test Neo4j connection
+    neo4j_status = "unknown"
+    neo4j_error = None
+    try:
+        graph_service.client.connect()
+        test_query = "RETURN 1 as test"
+        result = graph_service.client.execute_query(test_query)
+        neo4j_status = "connected" if result else "no_data"
+    except Exception as e:
+        neo4j_status = "error"
+        neo4j_error = str(e)
+        logger.error("Neo4j connection error: %s", neo4j_error)
+    
+    # Get actual node counts
+    node_counts = {}
+    for label in ["Book", "Concept", "Author", "Highlight"]:
+        try:
+            query = f"MATCH (n:{label}) RETURN count(n) as count"
+            result = graph_service.client.execute_query(query)
+            node_counts[label] = result[0]["count"] if result else 0
+        except Exception:
+            node_counts[label] = -1
+    
+    # Get relationship count
+    try:
+        rel_query = "MATCH ()-[r]->() RETURN count(r) as count"
+        rel_result = graph_service.client.execute_query(rel_query)
+        rel_count = rel_result[0]["count"] if rel_result else 0
+    except Exception:
+        rel_count = -1
+    
+    return {
+        "neo4j_status": neo4j_status,
+        "neo4j_error": neo4j_error,
+        "node_counts": node_counts,
+        "relationship_count": rel_count,
+    }

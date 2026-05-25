@@ -3,7 +3,7 @@
 Manages nodes, relationships, and graph queries.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from src.neo4j_client import Neo4jClient, neo4j_client
@@ -37,7 +37,7 @@ class GraphService:
 
     def create_book_node(
         self,
-        book_id: UUID,
+        book_id: Union[str, UUID],
         title: str,
         author: str,
         category: Optional[str] = None,
@@ -69,7 +69,7 @@ class GraphService:
 
     def create_concept_node(
         self,
-        concept_id: UUID,
+        concept_id: Union[str, UUID],
         name: str,
         domain: Optional[str] = None,
         frequency: int = 0,
@@ -150,7 +150,7 @@ class GraphService:
 
     def create_highlight_node(
         self,
-        highlight_id: UUID,
+        highlight_id: Union[str, UUID],
         content: str,
         chapter: Optional[str] = None,
         **kwargs: Any,
@@ -181,7 +181,7 @@ class GraphService:
 
     def link_book_to_concept(
         self,
-        book_id: UUID,
+        book_id: Union[str, UUID],
         concept_name: str,
         weight: float = 1.0,
     ) -> dict[str, Any]:
@@ -210,7 +210,7 @@ class GraphService:
 
     def link_book_to_author(
         self,
-        book_id: UUID,
+        book_id: Union[str, UUID],
         author_name: str,
     ) -> dict[str, Any]:
         """Create WRITTEN_BY relationship.
@@ -236,7 +236,7 @@ class GraphService:
 
     def link_highlight_to_concept(
         self,
-        highlight_id: UUID,
+        highlight_id: Union[str, UUID],
         concept_name: str,
     ) -> dict[str, Any]:
         """Create RELATED_TO relationship from highlight to concept.
@@ -262,8 +262,8 @@ class GraphService:
 
     def link_highlight_to_book(
         self,
-        highlight_id: UUID,
-        book_id: UUID,
+        highlight_id: Union[str, UUID],
+        book_id: Union[str, UUID],
     ) -> dict[str, Any]:
         """Create FROM_BOOK relationship.
 
@@ -316,45 +316,52 @@ class GraphService:
             # Process source node
             n = record.get("n")
             if n:
-                node_id = str(n.get("id", ""))
-                labels = n.get("labels", [])
-                node_type = self._infer_node_type(labels, n)
-                label = n.get("title") or n.get("name") or n.get("content", "")[:50]
+                # Neo4j returns Node objects, convert to dict properly
+                n_props = dict(n) if hasattr(n, 'keys') else n
+                node_id = str(n_props.get("id", ""))
+                labels = list(n.labels) if hasattr(n, 'labels') else n_props.get("labels", [])
+                node_type = self._infer_node_type(labels, n_props)
+                label = n_props.get("title") or n_props.get("name") or n_props.get("content", "")[:50]
 
                 if node_id and node_id not in nodes_dict:
                     nodes_dict[node_id] = GraphNode(
                         id=node_id,
                         type=node_type,
                         label=label,
-                        properties=dict(n),
+                        properties=n_props,
                     )
 
             # Process target node
             m = record.get("m")
             if m:
-                node_id = str(m.get("id", ""))
-                labels = m.get("labels", [])
-                node_type = self._infer_node_type(labels, m)
-                label = m.get("title") or m.get("name") or m.get("content", "")[:50]
+                # Neo4j returns Node objects, convert to dict properly
+                m_props = dict(m) if hasattr(m, 'keys') else m
+                node_id = str(m_props.get("id", ""))
+                labels = list(m.labels) if hasattr(m, 'labels') else m_props.get("labels", [])
+                node_type = self._infer_node_type(labels, m_props)
+                label = m_props.get("title") or m_props.get("name") or m_props.get("content", "")[:50]
 
                 if node_id and node_id not in nodes_dict:
                     nodes_dict[node_id] = GraphNode(
                         id=node_id,
                         type=node_type,
                         label=label,
-                        properties=dict(m),
+                        properties=m_props,
                     )
 
             # Process relationship
             r = record.get("r")
             if r and n and m:
-                edge_type = self._map_relationship_type(r.get("type", ""))
+                r_props = dict(r) if hasattr(r, 'keys') else r
+                n_props = dict(n) if hasattr(n, 'keys') else n
+                m_props = dict(m) if hasattr(m, 'keys') else m
+                edge_type = self._map_relationship_type(r_props.get("type", ""))
                 edges.append(
                     GraphEdge(
-                        source=str(n.get("id", "")),
-                        target=str(m.get("id", "")),
+                        source=str(n_props.get("id", "")),
+                        target=str(m_props.get("id", "")),
                         type=edge_type,
-                        properties=dict(r),
+                        properties=r_props,
                     )
                 )
 
@@ -362,7 +369,7 @@ class GraphService:
 
     def get_book_graph(
         self,
-        book_id: UUID,
+        book_id: Union[str, UUID],
     ) -> tuple[list[GraphNode], list[GraphEdge]]:
         """Get graph for a specific book.
 
@@ -390,33 +397,38 @@ class GraphService:
             # Process all nodes
             for key in ["b", "related", "highlight", "concept"]:
                 node = record.get(key)
-                if node and isinstance(node, dict):
-                    node_id = str(node.get("id", ""))
-                    if node_id and node_id not in nodes_dict:
-                        labels = node.get("labels", [])
-                        node_type = self._infer_node_type(labels, node)
-                        label = node.get("title") or node.get("name") or node.get("content", "")[:50]
+                if node:
+                    # Neo4j returns Node objects, convert to dict properly
+                    node_props = dict(node) if hasattr(node, 'keys') else node
+                    if isinstance(node_props, dict):
+                        node_id = str(node_props.get("id", ""))
+                        if node_id and node_id not in nodes_dict:
+                            labels = list(node.labels) if hasattr(node, 'labels') else node_props.get("labels", [])
+                            node_type = self._infer_node_type(labels, node_props)
+                            label = node_props.get("title") or node_props.get("name") or node_props.get("content", "")[:50]
 
-                        nodes_dict[node_id] = GraphNode(
-                            id=node_id,
-                            type=node_type,
-                            label=label,
-                            properties=dict(node),
-                        )
+                            nodes_dict[node_id] = GraphNode(
+                                id=node_id,
+                                type=node_type,
+                                label=label,
+                                properties=node_props,
+                            )
 
             # Process relationships
             for key in ["r1", "r2", "r3"]:
                 rel = record.get(key)
-                if rel and isinstance(rel, dict):
-                    edge_type = self._map_relationship_type(rel.get("type", ""))
-                    edges.append(
-                        GraphEdge(
-                            source=str(record.get(rel.get("start", ""), {}).get("id", "")),
-                            target=str(record.get(rel.get("end", ""), {}).get("id", "")),
-                            type=edge_type,
-                            properties=dict(rel),
+                if rel:
+                    rel_props = dict(rel) if hasattr(rel, 'keys') else rel
+                    if isinstance(rel_props, dict):
+                        edge_type = self._map_relationship_type(rel_props.get("type", ""))
+                        edges.append(
+                            GraphEdge(
+                                source=str(record.get(key).start) if hasattr(record.get(key), 'start') else "",
+                                target=str(record.get(key).end) if hasattr(record.get(key), 'end') else "",
+                                type=edge_type,
+                                properties=rel_props,
+                            )
                         )
-                    )
 
         return list(nodes_dict.values()), edges
 
@@ -525,5 +537,16 @@ class GraphService:
         return type_map.get(rel_type, EdgeType.HAS_CONCEPT)
 
 
-# Singleton instance
-graph_service = GraphService()
+# Singleton instance - lazily initialized to ensure neo4j_client is connected
+global graph_service
+_graph_service: Optional[GraphService] = None
+
+def get_graph_service() -> GraphService:
+    """Get or create graph service instance."""
+    global _graph_service
+    if _graph_service is None:
+        _graph_service = GraphService()
+    return _graph_service
+
+# Backward compatibility
+graph_service = get_graph_service()
