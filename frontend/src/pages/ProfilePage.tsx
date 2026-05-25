@@ -4,6 +4,9 @@ import { Card, Row, Col, Statistic, Spin, Empty, Typography, Space, Progress } f
 import { BookOutlined, ReadOutlined, TagOutlined, ClockCircleOutlined } from "@ant-design/icons"
 import { profileApi } from "../api"
 import dayjs from "dayjs"
+import relativeTime from "dayjs/plugin/relativeTime"
+
+dayjs.extend(relativeTime)
 
 const { Title, Text } = Typography
 

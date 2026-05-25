@@ -42,10 +42,7 @@ async def get_profile(
         .order_by(func.count(Book.id).desc())
     )
     category_results = db.execute(category_query).all()
-    categories = [
-        {"name": r[0] or "Unknown", "count": r[1]}
-        for r in category_results
-    ]
+    categories = {r[0] or "Unknown": r[1] for r in category_results}
     
     # Get emotional distribution
     emotion_query = (
@@ -74,18 +71,25 @@ async def get_profile(
     ]
     
     return {
-        "status": "generated",
-        "summary": {
-            "total_books": book_count,
-            "total_highlights": highlight_count,
+        "total_books": book_count,
+        "total_highlights": highlight_count,
+        "categories": categories,
+        "reading_time_total": "0",
+        "recent_books": [
+            {"id": str(book.id), "title": book.title, "author": book.author or "Unknown", "created_at": book.created_at.isoformat() if book.created_at else ""}
+            for book in db.execute(select(Book).order_by(Book.created_at.desc()).limit(5)).scalars().all()
+        ],
+        "_summary": {
             "avg_highlights_per_book": highlight_count / book_count if book_count > 0 else 0,
         },
-        "preferences": {
-            "favorite_categories": categories[:5] if categories else [],
+        "_preferences": {
+            "favorite_categories": [
+                {"name": name, "count": count} for name, count in list(categories.items())[:5]
+            ],
             "reading_emotions": emotions,
             "domains_of_interest": domains[:10] if domains else [],
         },
-        "tendencies": {
+        "_tendencies": {
             "dominant_emotion": emotions[0]["type"] if emotions else "neutral",
             "primary_domain": domains[0]["name"] if domains else "general",
         },
