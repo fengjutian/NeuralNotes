@@ -7,6 +7,8 @@ from src.database import get_db
 from src.services.markdown_parser import MarkdownParser
 from src.services.book_service import book_service
 from src.services.highlight_service import highlight_service
+from src.services.graph_service import graph_service
+from src.services.concept_extractor import ConceptExtractor
 from src.schemas.book import BookCreate
 from src.schemas.highlight import HighlightCreate
 from src.utils.logging import get_logger
@@ -14,6 +16,9 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Initialize services
+concept_extractor = ConceptExtractor()
 
 
 @router.post("/")
@@ -84,9 +89,10 @@ async def import_file(
 
     # Create highlights
     highlight_count = 0
+    created_highlights = []
     for hl_data in book_data.highlights:
         try:
-            highlight_service.create(
+            highlight = highlight_service.create(
                 db,
                 HighlightCreate(
                     book_id=book.id,
@@ -96,11 +102,87 @@ async def import_file(
                     url=hl_data.url,
                 ),
             )
+            created_highlights.append(highlight)
             highlight_count += 1
         except Exception as e:
             logger.warning("Failed to create highlight: %s", str(e))
 
     logger.info("Created %d highlights for book %s", highlight_count, book.id)
+
+    # === Generate Knowledge Graph Data ===
+    # 1. Create book node in Neo4j
+    try:
+        graph_service.create_book_node(
+            book_id=book.id,
+            title=book.title,
+            author=book.author,
+            category=book.category,
+        )
+        logger.info("Created book node in graph: %s", book.id)
+    except Exception as e:
+        logger.warning("Failed to create book node in graph: %s", str(e))
+
+    # 2. Create author node and link
+    try:
+        graph_service.create_author_node(name=book.author)
+        graph_service.link_book_to_author(book_id=book.id, author_name=book.author)
+        logger.info("Created author node and link: %s", book.author)
+    except Exception as e:
+        logger.warning("Failed to create author in graph: %s", str(e))
+
+    # 3. Create highlight nodes and link to book
+    # 4. Extract concepts and create concept nodes
+    concept_count = 0
+    for highlight in created_highlights:
+        try:
+            # Create highlight node in Neo4j
+            graph_service.create_highlight_node(
+                highlight_id=highlight.id,
+                content=highlight.content,
+                chapter=highlight.chapter,
+            )
+            # Link highlight to book
+            graph_service.link_highlight_to_book(
+                highlight_id=highlight.id,
+                book_id=book.id,
+            )
+
+            # Extract concepts from highlight
+            concepts = concept_extractor.extract(highlight.content)
+            if concepts and concepts.concepts:
+                for concept_name in concepts.concepts:
+                    try:
+                        # Create concept node
+                        from src.models.concept import Concept
+                        concept = Concept(name=concept_name, domain=concepts.domain)
+                        db.add(concept)
+                        db.commit()
+
+                        # Create concept node in Neo4j
+                        graph_service.create_concept_node(
+                            concept_id=concept.id,  # Already a string UUID
+                            name=concept_name,
+                            domain=concepts.domain,
+                        )
+                        # Link book to concept
+                        graph_service.link_book_to_concept(
+                            book_id=book.id,
+                            concept_name=concept_name,
+                        )
+                        # Link highlight to concept
+                        graph_service.link_highlight_to_concept(
+                            highlight_id=highlight.id,
+                            concept_name=concept_name,
+                        )
+                        concept_count += 1
+                    except Exception as e:
+                        logger.warning("Failed to create concept %s: %s", concept_name, str(e))
+                        db.rollback()
+
+        except Exception as e:
+            logger.warning("Failed to create highlight in graph: %s", str(e))
+
+    logger.info("Created %d concept nodes for book %s", concept_count, book.id)
 
     return {
         "status": "success",
@@ -108,6 +190,7 @@ async def import_file(
         "title": book.title,
         "author": book.author,
         "highlight_count": highlight_count,
+        "concept_count": concept_count,
     }
 
 
@@ -152,9 +235,10 @@ async def import_batch(
             )
 
             highlight_count = 0
+            created_highlights = []
             for hl_data in book_data.highlights:
                 try:
-                    highlight_service.create(
+                    highlight = highlight_service.create(
                         db,
                         HighlightCreate(
                             book_id=book.id,
@@ -163,9 +247,57 @@ async def import_batch(
                             create_time=hl_data.create_time,
                         ),
                     )
+                    created_highlights.append(highlight)
                     highlight_count += 1
                 except Exception:
                     pass
+
+            # Generate graph data for batch import
+            concept_count = 0
+            try:
+                graph_service.create_book_node(
+                    book_id=book.id,
+                    title=book.title,
+                    author=book.author,
+                    category=book.category,
+                )
+                graph_service.create_author_node(name=book.author)
+                graph_service.link_book_to_author(book_id=book.id, author_name=book.author)
+
+                for highlight in created_highlights:
+                    try:
+                        graph_service.create_highlight_node(
+                            highlight_id=highlight.id,
+                            content=highlight.content,
+                            chapter=highlight.chapter,
+                        )
+                        graph_service.link_highlight_to_book(
+                            highlight_id=highlight.id,
+                            book_id=book.id,
+                        )
+
+                        concepts = concept_extractor.extract(highlight.content)
+                        if concepts and concepts.concepts:
+                            for concept_name in concepts.concepts:
+                                from src.models.concept import Concept
+                                concept = Concept(name=concept_name, domain=concepts.domain)
+                                db.add(concept)
+                                db.commit()
+                                graph_service.create_concept_node(
+                                    concept_id=concept.id,  # Already a string UUID
+                                    name=concept_name,
+                                    domain=concepts.domain,
+                                )
+                                graph_service.link_book_to_concept(book_id=book.id, concept_name=concept_name)
+                                graph_service.link_highlight_to_concept(
+                                    highlight_id=highlight.id,
+                                    concept_name=concept_name,
+                                )
+                                concept_count += 1
+                    except Exception:
+                        db.rollback()
+            except Exception as e:
+                logger.warning("Failed to create graph data for batch import: %s", str(e))
 
             results.append({
                 "file": file.filename,
@@ -173,6 +305,7 @@ async def import_batch(
                 "book_id": str(book.id),
                 "title": book.title,
                 "highlight_count": highlight_count,
+                "concept_count": concept_count,
             })
 
         except Exception as e:
