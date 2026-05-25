@@ -12,7 +12,7 @@ from src.utils.logging import setup_logging, get_logger
 from src.utils.exceptions import AppException
 from src.database import init_db
 from src.neo4j_client import neo4j_client
-from src.qdrant_client import qdrant_client
+from src.qdrant_wrapper import qdrant_client
 
 # Initialize logging
 setup_logging()
@@ -40,8 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Connect to Qdrant
     try:
-        qdrant_client.connect()
-        qdrant_client.ensure_collection()
+        # qdrant_client.connect()
+        # qdrant_client.ensure_collection()
     except Exception as e:
         logger.warning("Qdrant connection failed: %s (continuing without vector search)", str(e))
 
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown
     logger.info("Shutting down %s", settings.app_name)
     neo4j_client.disconnect()
-    qdrant_client.disconnect()
+    # qdrant_client.disconnect()
     logger.info("Application shutdown complete")
 
 
