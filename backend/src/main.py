@@ -26,23 +26,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s v%s", settings.app_name, settings.app_version)
 
     # Initialize database tables
-    try:
+    # try:
         init_db()
         logger.info("Database initialized")
-    except Exception as e:
+    # except Exception as e:
         logger.error("Failed to initialize database: %s", str(e))
 
     # Connect to Neo4j
-    try:
+    # try:
         neo4j_client.connect()
-    except Exception as e:
+    # except Exception as e:
         logger.warning("Neo4j connection failed: %s (continuing without graph)", str(e))
 
     # Connect to Qdrant
-    try:
+    # try:
         # qdrant_client.connect()
         # qdrant_client.ensure_collection()
-    except Exception as e:
+    # except Exception as e:
         logger.warning("Qdrant connection failed: %s (continuing without vector search)", str(e))
 
     logger.info("Application startup complete")
