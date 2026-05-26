@@ -5,7 +5,7 @@ Provides semantic search and retrieval capabilities.
 
 from typing import Any, Optional
 
-from src.qdrant_client import QdrantClientWrapper, qdrant_client
+from src.qdrant_wrapper import QdrantClientWrapper, qdrant_client
 from src.services.embedding_service import EmbeddingService, embedding_service
 from src.utils.logging import get_logger
 
