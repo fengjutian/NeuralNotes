@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # Neo4j
     neo4j_uri: str = Field(
-        default="bolt://localhost:7474",
+        default="neo4j://127.0.0.1:7687",
         alias="NEO4J_URI",
     )
     neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")

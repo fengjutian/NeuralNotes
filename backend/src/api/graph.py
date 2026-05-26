@@ -19,9 +19,10 @@ router = APIRouter()
 
 @router.get("/", response_model=GraphResponse)
 async def get_graph(
-    book_id: Optional[UUID] = Query(default=None, description="Filter by book ID"),
-    concept_id: Optional[UUID] = Query(default=None, description="Filter by concept ID"),
-    limit: int = Query(default=100, ge=1, le=1000, description="Max nodes to return"),
+    book_id: Optional[UUID] = None,
+    concept_id: Optional[UUID] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
 ) -> GraphResponse:
     """Get knowledge graph data.
 
@@ -29,24 +30,73 @@ async def get_graph(
         book_id: Optional book ID to filter graph.
         concept_id: Optional concept ID to center graph.
         limit: Maximum number of nodes to return.
+        db: Database session.
 
     Returns:
         Graph data with nodes and edges.
     """
     logger.info("Get graph: book_id=%s, concept_id=%s, limit=%d", book_id, concept_id, limit)
     
-    # Get graph data
-    if book_id:
-        nodes, edges = graph_service.get_book_graph(book_id)
-    else:
-        nodes, edges = graph_service.get_full_graph(limit=limit)
-    
-    return GraphResponse(
-        nodes=nodes[:limit],
-        edges=edges,
-        total_nodes=len(nodes),
-        total_edges=len(edges),
-    )
+    # Try to get graph data from Neo4j
+    try:
+        if book_id:
+            nodes, edges = graph_service.get_book_graph(book_id)
+        else:
+            nodes, edges = graph_service.get_full_graph(limit=limit)
+        
+        return GraphResponse(
+            nodes=nodes[:limit],
+            edges=edges,
+            total_nodes=len(nodes),
+            total_edges=len(edges),
+        )
+    except Exception as e:
+        logger.warning("Neo4j graph failed, falling back to MySQL: %s", str(e))
+        # Fallback to MySQL-based graph
+        from src.api.mysql_graph import get_mysql_graph_data
+        from src.schemas.graph import GraphNode, GraphEdge, NodeType, EdgeType
+        
+        mysql_data = await get_mysql_graph_data(db)
+        
+        # Convert MySQL nodes to GraphNode format
+        nodes = []
+        for n in mysql_data["nodes"][:limit]:
+            node_type_str = n.get("type", "concept").upper()
+            try:
+                node_type = NodeType(node_type_str)
+            except ValueError:
+                node_type = NodeType.CONCEPT
+            
+            nodes.append(GraphNode(
+                id=n["id"],
+                type=node_type,
+                label=n.get("label", ""),
+                properties=n.get("properties", {}),
+            ))
+        
+        # Convert MySQL edges to GraphEdge format
+        # Note: EdgeType values are lowercase (e.g., "has_concept", "written_by")
+        edges = []
+        for e in mysql_data["edges"]:
+            edge_type_str = e.get("type", "related_to").lower().replace("_", "-")
+            try:
+                edge_type = EdgeType(edge_type_str)
+            except ValueError:
+                edge_type = EdgeType.RELATED_TO
+            
+            edges.append(GraphEdge(
+                source=e["source"],
+                target=e["target"],
+                type=edge_type,
+                properties=e.get("properties", {}),
+            ))
+        
+        return GraphResponse(
+            nodes=nodes,
+            edges=edges,
+            total_nodes=mysql_data["total_nodes"],
+            total_edges=mysql_data["total_edges"],
+        )
 
 
 @router.get("/stats")

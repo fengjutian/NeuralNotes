@@ -34,6 +34,9 @@ class Neo4jClient:
             self._driver = GraphDatabase.driver(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
+                max_connection_lifetime=3600,
+                max_connection_pool_size=50,
+                connection_acquisition_timeout=60,
             )
             # Verify connection
             self._driver.verify_connectivity()
@@ -93,7 +96,7 @@ class Neo4jClient:
         logger.debug("Executing query: %s with params: %s", query[:100], parameters)
         try:
             with self.session() as session:
-                result = session.run(query, parameters or {})
+                result = session.run(query, parameters or {}, timeout=30)  # 30秒超时
                 records = [record.data() for record in result]
                 logger.debug("Query returned %d records", len(records))
                 return records

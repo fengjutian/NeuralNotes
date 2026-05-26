@@ -300,14 +300,15 @@ class GraphService:
         Returns:
             Tuple of (nodes, edges).
         """
-        query = f"""
+        # 优化查询：使用标签采样 + 限制节点数量，而不是扫描全库
+        query = """
         MATCH (n)
+        WITH n LIMIT $limit
         OPTIONAL MATCH (n)-[r]->(m)
         RETURN n, r, m
-        LIMIT {limit}
         """
 
-        results = self.client.execute_query(query)
+        results = self.client.execute_query(query, {"limit": limit})
 
         nodes_dict: dict[str, GraphNode] = {}
         edges: list[GraphEdge] = []

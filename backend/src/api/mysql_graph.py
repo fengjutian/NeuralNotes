@@ -17,11 +17,11 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/")
-async def get_mysql_graph(
-    db: Session = Depends(get_db),
-) -> dict:
-    """Get graph data from MySQL (fallback when Neo4j unavailable).
+async def get_mysql_graph_data(db: Session) -> dict:
+    """Get graph data from MySQL (reusable function for fallback).
+
+    Args:
+        db: Database session.
 
     Returns:
         Graph data with nodes and edges from MySQL.
@@ -130,6 +130,18 @@ async def get_mysql_graph(
         "total_edges": len(edges),
         "source": "mysql",
     }
+
+
+@router.get("/")
+async def get_mysql_graph(
+    db: Session = Depends(get_db),
+) -> dict:
+    """Get graph data from MySQL (fallback when Neo4j unavailable).
+
+    Returns:
+        Graph data with nodes and edges from MySQL.
+    """
+    return await get_mysql_graph_data(db)
 
 
 @router.get("/stats")
