@@ -85,7 +85,7 @@ async def get_mysql_graph_data(db: Session) -> dict:
         edges.append({
             "source": str(highlight.id),
             "target": str(highlight.book_id),
-            "type": "FROM_BOOK"
+            "type": "from_book"
         })
         
         # Extract and add concepts
