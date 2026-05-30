@@ -55,11 +55,22 @@ class ConceptExtractor:
                 {"role": "user", "content": prompt},
             ]
 
+            self.logger.info("[LLM_CALL] Calling MiniMax for concept extraction, highlight length: %d", len(highlight))
             response = self.llm.chat_completion(messages)
-            return self._parse_response(response)
+            self.logger.info("[LLM_RESPONSE] content length: %d, content preview: %s...", 
+                           len(response.content), response.content[:100] if response.content else "empty")
+            
+            result = self._parse_response(response)
+            if result:
+                self.logger.info("[LLM_SUCCESS] Extracted %d concepts: %s", 
+                               len(result.concepts), result.concepts[:5] if result.concepts else [])
+            else:
+                self.logger.warning("[LLM_PARSE_FAILED] Could not parse LLM response")
+            
+            return result
 
         except Exception as e:
-            self.logger.error("Concept extraction failed: %s", str(e))
+            self.logger.error("[LLM_ERROR] Concept extraction failed: %s", str(e), exc_info=True)
             return None
 
     def extract_batch(

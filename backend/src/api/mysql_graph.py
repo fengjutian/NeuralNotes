@@ -1,5 +1,6 @@
 """MySQL-based Graph API for when Neo4j is not available."""
 
+import time
 from typing import Optional
 from uuid import UUID
 
@@ -17,6 +18,13 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _log_duration(step: str, start_time: float, extra: str = "") -> float:
+    """Log duration since start_time and return current time."""
+    elapsed = time.time() - start_time
+    logger.info("[TIMING][MySQL] %s took %.3fs %s", step, elapsed, extra)
+    return time.time()
+
+
 async def get_mysql_graph_data(db: Session) -> dict:
     """Get graph data from MySQL (reusable function for fallback).
 
@@ -26,21 +34,25 @@ async def get_mysql_graph_data(db: Session) -> dict:
     Returns:
         Graph data with nodes and edges from MySQL.
     """
+    t0 = time.time()
     logger.info("Getting graph data from MySQL")
     
     # Get all books
     books_query = select(Book)
     books = db.execute(books_query).scalars().all()
+    t1 = _log_duration("query_books", t0, f"count={len(books)}")
     
     # Get all highlights with book info
     highlights_query = select(Highlight)
     highlights = db.execute(highlights_query).scalars().all()
+    t2 = _log_duration("query_highlights", t1, f"count={len(highlights)}")
     
     nodes = []
     edges = []
     concepts = set()
     
     # Add book nodes
+    t3 = time.time()
     for book in books:
         nodes.append({
             "id": str(book.id),
@@ -68,8 +80,10 @@ async def get_mysql_graph_data(db: Session) -> dict:
                 "target": author_id,
                 "type": "written_by"
             })
+    t4 = _log_duration("build_book_nodes", t3, f"books={len(books)}")
     
     # Add highlight nodes and extract concepts
+    t5 = time.time()
     for highlight in highlights:
         nodes.append({
             "id": str(highlight.id),
@@ -117,7 +131,9 @@ async def get_mysql_graph_data(db: Session) -> dict:
                         "target": concept_id,
                         "type": "has_concept"
                     })
+    t6 = _log_duration("build_highlight_nodes", t5, f"highlights={len(highlights)}")
     
+    _log_duration("mysql_graph_total", t0, f"nodes={len(nodes)}, edges={len(edges)}, concepts={len(concepts)}")
     logger.info(
         "MySQL graph: %d nodes, %d edges, %d concepts",
         len(nodes), len(edges), len(concepts)

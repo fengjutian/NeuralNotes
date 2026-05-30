@@ -1,5 +1,6 @@
 """Knowledge Graph API endpoints."""
 
+import time
 from typing import Optional
 from uuid import UUID
 
@@ -15,6 +16,13 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _log_duration(step: str, start_time: float, extra: str = "") -> float:
+    """Log duration since start_time and return current time."""
+    elapsed = time.time() - start_time
+    logger.info("[TIMING] %s took %.3fs %s", step, elapsed, extra)
+    return time.time()
 
 
 @router.get("/", response_model=GraphResponse)
@@ -35,30 +43,38 @@ async def get_graph(
     Returns:
         Graph data with nodes and edges.
     """
+    t0 = time.time()
     logger.info("Get graph: book_id=%s, concept_id=%s, limit=%d", book_id, concept_id, limit)
     
     # Try to get graph data from Neo4j
     try:
+        t1 = _log_duration("pre-neo4j", t0)
         if book_id:
             nodes, edges = graph_service.get_book_graph(book_id)
         else:
             nodes, edges = graph_service.get_full_graph(limit=limit)
+        t2 = _log_duration("neo4j_query", t1, f"nodes={len(nodes)}, edges={len(edges)}")
         
-        return GraphResponse(
+        result = GraphResponse(
             nodes=nodes[:limit],
             edges=edges,
             total_nodes=len(nodes),
             total_edges=len(edges),
         )
+        _log_duration("total", t0, "source=neo4j")
+        return result
     except Exception as e:
+        t3 = _log_duration("neo4j_failed", t0, f"error={str(e)[:100]}")
         logger.warning("Neo4j graph failed, falling back to MySQL: %s", str(e))
         # Fallback to MySQL-based graph
         from src.api.mysql_graph import get_mysql_graph_data
         from src.schemas.graph import GraphNode, GraphEdge, NodeType, EdgeType
         
         mysql_data = await get_mysql_graph_data(db)
+        t4 = _log_duration("mysql_query", t3, f"nodes={mysql_data['total_nodes']}, edges={mysql_data['total_edges']}")
         
         # Convert MySQL nodes to GraphNode format
+        t5 = time.time()
         nodes = []
         for n in mysql_data["nodes"][:limit]:
             node_type_str = n.get("type", "concept").upper()
@@ -73,6 +89,7 @@ async def get_graph(
                 label=n.get("label", ""),
                 properties=n.get("properties", {}),
             ))
+        t6 = _log_duration("convert_nodes", t5, f"count={len(nodes)}")
         
         # Convert MySQL edges to GraphEdge format
         # Note: EdgeType values are lowercase (e.g., "has_concept", "written_by")
@@ -90,13 +107,16 @@ async def get_graph(
                 type=edge_type,
                 properties=e.get("properties", {}),
             ))
+        t7 = _log_duration("convert_edges", t6, f"count={len(edges)}")
         
-        return GraphResponse(
+        result = GraphResponse(
             nodes=nodes,
             edges=edges,
             total_nodes=mysql_data["total_nodes"],
             total_edges=mysql_data["total_edges"],
         )
+        _log_duration("total", t0, "source=mysql_fallback")
+        return result
 
 
 @router.get("/stats")

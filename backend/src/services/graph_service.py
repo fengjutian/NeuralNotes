@@ -3,6 +3,7 @@
 Manages nodes, relationships, and graph queries.
 """
 
+import time
 from typing import Any, Optional, Union
 from uuid import UUID
 
@@ -11,6 +12,13 @@ from src.schemas.graph import GraphNode, GraphEdge, NodeType, EdgeType
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _log_duration(step: str, start_time: float, extra: str = "") -> float:
+    """Log duration since start_time and return current time."""
+    elapsed = time.time() - start_time
+    logger.info("[TIMING][GraphService] %s took %.3fs %s", step, elapsed, extra)
+    return time.time()
 
 
 class GraphService:
@@ -300,6 +308,7 @@ class GraphService:
         Returns:
             Tuple of (nodes, edges).
         """
+        t0 = time.time()
         # 优化查询：使用标签采样 + 限制节点数量，而不是扫描全库
         query = """
         MATCH (n)
@@ -309,6 +318,7 @@ class GraphService:
         """
 
         results = self.client.execute_query(query, {"limit": limit})
+        t1 = _log_duration("neo4j_query", t0, f"limit={limit}, records={len(results)}")
 
         nodes_dict: dict[str, GraphNode] = {}
         edges: list[GraphEdge] = []
@@ -366,6 +376,8 @@ class GraphService:
                     )
                 )
 
+        t2 = _log_duration("process_results", t1, f"nodes={len(nodes_dict)}, edges={len(edges)}")
+        _log_duration("get_full_graph_total", t0, f"nodes={len(nodes_dict)}, edges={len(edges)}")
         return list(nodes_dict.values()), edges
 
     def get_book_graph(
@@ -380,6 +392,7 @@ class GraphService:
         Returns:
             Tuple of (nodes, edges) for the book.
         """
+        t0 = time.time()
         query = """
         MATCH (b:Book {id: $book_id})
         OPTIONAL MATCH (b)-[r1]-(related)
@@ -389,6 +402,7 @@ class GraphService:
         """
 
         results = self.client.execute_query(query, {"book_id": str(book_id)})
+        t1 = _log_duration("neo4j_query", t0, f"book_id={book_id}, records={len(results)}")
 
         # Similar processing as get_full_graph
         nodes_dict: dict[str, GraphNode] = {}
@@ -431,6 +445,8 @@ class GraphService:
                             )
                         )
 
+        t2 = _log_duration("process_results", t1, f"nodes={len(nodes_dict)}, edges={len(edges)}")
+        _log_duration("get_book_graph_total", t0, f"book_id={book_id}, nodes={len(nodes_dict)}, edges={len(edges)}")
         return list(nodes_dict.values()), edges
 
     def get_concept_details(

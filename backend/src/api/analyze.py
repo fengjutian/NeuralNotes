@@ -1,5 +1,6 @@
 """AI Analysis API endpoints."""
 
+import time
 from typing import Optional
 from uuid import UUID
 
@@ -15,6 +16,13 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _log_duration(step: str, start_time: float, extra: str = "") -> float:
+    """Log duration since start_time and return current time."""
+    elapsed = time.time() - start_time
+    logger.info("[TIMING][Analyze] %s took %.3fs %s", step, elapsed, extra)
+    return time.time()
 
 
 @router.post("/", response_model=HighlightListResponse)
@@ -33,10 +41,12 @@ async def trigger_analysis(
     Returns:
         List of analyzed highlights.
     """
+    t0 = time.time()
     logger.info("Analysis triggered: book_id=%s, highlight_count=%d", 
                 book_id, len(highlight_ids or []))
     
     # Get highlights to analyze
+    t1 = time.time()
     if highlight_ids:
         highlights = []
         for hid in highlight_ids:
@@ -48,6 +58,8 @@ async def trigger_analysis(
     else:
         raise HTTPException(status_code=400, detail="Must provide book_id or highlight_ids")
     
+    t2 = _log_duration("fetch_highlights", t1, f"count={len(highlights)}")
+    
     if not highlights:
         logger.warning("No highlights found to analyze")
         return HighlightListResponse(items=[], total=0, page=1, page_size=0)
@@ -57,8 +69,10 @@ async def trigger_analysis(
     # Run batch analysis
     try:
         analyzed = ai_analyzer.analyze_highlights(highlights)
+        t3 = _log_duration("ai_analysis", t2, f"input={len(highlights)}, output={len(analyzed)}")
         
         # Update database
+        t4 = time.time()
         results = []
         for highlight, analysis in zip(highlights, analyzed):
             if analysis:
@@ -71,6 +85,9 @@ async def trigger_analysis(
                 updated = highlight_service.update(db, highlight.id, update_data)
                 if updated:
                     results.append(HighlightResponse.model_validate(updated))
+        
+        t5 = _log_duration("update_database", t4, f"updated={len(results)}")
+        _log_duration("total_analysis", t0, f"highlights={len(highlights)}, analyzed={len(results)}")
         
         return HighlightListResponse(
             items=results,
