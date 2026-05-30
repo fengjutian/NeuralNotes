@@ -1,10 +1,17 @@
-import { useQuery } from "@tanstack/react-query"
-import { Card, Spin, Empty, Typography, Tag, Space, Button, message, Alert } from "antd"
+import { useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Card, Spin, Empty, Typography, Tag, Space, Button, message, Alert, Modal, Select, Divider } from "antd"
+import { RobotOutlined } from "@ant-design/icons"
 import api from "../api"
 
 const { Title, Text } = Typography
 
 export default function GraphPage() {
+  const queryClient = useQueryClient()
+  const [analyzeModalVisible, setAnalyzeModalVisible] = useState(false)
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+
   const { data: neo4jData, isLoading: neo4jLoading, error: neo4jError } = useQuery({
     queryKey: ["graph", "neo4j"],
     queryFn: () => api.get("/graph/"),
@@ -16,6 +23,12 @@ export default function GraphPage() {
     queryKey: ["graph", "mysql"],
     queryFn: () => api.get("/mysql-graph/"),
     enabled: !neo4jLoading && (!!neo4jError || !neo4jData?.data?.nodes?.length),
+  })
+
+  // 获取书籍列表用于分析
+  const { data: booksData } = useQuery({
+    queryKey: ["books"],
+    queryFn: () => api.get("/books/"),
   })
 
   const isLoading = neo4jLoading || mysqlLoading
@@ -42,12 +55,71 @@ export default function GraphPage() {
     }
   }
 
+  const handleAnalyze = async () => {
+    if (!selectedBookId) {
+      message.warning("请选择要分析的书籍")
+      return
+    }
+    setAnalyzing(true)
+    try {
+      message.loading("AI 正在分析中，请稍候...")
+      const response = await api.post(`/analyze/?book_id=${selectedBookId}`, {}, {
+        timeout: 300000, // 5 分钟超时
+      })
+      const analyzedCount = response.data?.total || 0
+      message.success(`AI 分析完成！已分析 ${analyzedCount} 条笔记`)
+      setAnalyzeModalVisible(false)
+      queryClient.invalidateQueries({ queryKey: ["graph"] })
+    } catch (err: any) {
+      message.error("分析失败: " + (err.message || "请稍后重试"))
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <Title level={2} style={{ margin: 0 }}>📊 知识图谱</Title>
-        <Button onClick={handleSyncAll}>🔄 同步数据到图谱</Button>
+        <Space>
+          <Button icon={<RobotOutlined />} onClick={() => setAnalyzeModalVisible(true)}>🤖 AI 分析</Button>
+          <Button onClick={handleSyncAll}>🔄 同步数据到图谱</Button>
+        </Space>
       </div>
+
+      {/* AI 分析 Modal */}
+      <Modal
+        title="🤖 AI 概念分析"
+        open={analyzeModalVisible}
+        onOk={handleAnalyze}
+        onCancel={() => setAnalyzeModalVisible(false)}
+        confirmLoading={analyzing}
+        okText="开始分析"
+        cancelText="取消"
+      >
+        <p>选择一本书，系统将使用 AI 分析该书所有未分析的笔记，提取概念和知识点。</p>
+        <Divider />
+        <Select
+          style={{ width: "100%" }}
+          placeholder="请选择书籍"
+          value={selectedBookId}
+          onChange={setSelectedBookId}
+          showSearch
+          optionFilterProp="children"
+        >
+          {(booksData?.data?.items || []).map((book: any) => (
+            <Select.Option key={book.id} value={book.id}>
+              <Space>
+                <span>{book.title}</span>
+                <Tag>{book.highlight_count} 条笔记</Tag>
+              </Space>
+            </Select.Option>
+          ))}
+        </Select>
+        {booksData?.data?.items?.length === 0 && (
+          <Text type="secondary">暂无书籍，请先导入书籍</Text>
+        )}
+      </Modal>
       
       {neo4jError && (
         <Alert type="warning" message="Neo4j 不可用" description="无法连接到 Neo4j 数据库，图谱数据从 MySQL 读取。" style={{ marginBottom: 16 }} showIcon />

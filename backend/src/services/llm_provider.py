@@ -155,11 +155,13 @@ class MiniMaxProvider(BaseLLMProvider):
         model: str = "MiniMax-M2.7",
         base_url: str = "https://api.minimax.com/v1",
         max_retries: int = 3,
+        timeout: float = 60.0,
     ) -> None:
         self.api_key = api_key or settings.minimax_api_key
         self.model = model
         self.base_url = base_url or settings.minimax_base_url
         self.max_retries = max_retries
+        self.timeout = timeout
         self.logger = get_logger(self.__class__.__name__)
 
     def chat_completion(
@@ -172,7 +174,7 @@ class MiniMaxProvider(BaseLLMProvider):
     ) -> LLMResponse:
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout)
 
         try:
             response = client.chat.completions.create(
