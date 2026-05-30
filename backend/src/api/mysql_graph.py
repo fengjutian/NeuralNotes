@@ -66,7 +66,7 @@ async def get_mysql_graph_data(db: Session) -> dict:
             edges.append({
                 "source": str(book.id),
                 "target": author_id,
-                "type": "WRITTEN_BY"
+                "type": "written_by"
             })
     
     # Add highlight nodes and extract concepts
@@ -108,14 +108,14 @@ async def get_mysql_graph_data(db: Session) -> dict:
                     edges.append({
                         "source": str(highlight.id),
                         "target": concept_id,
-                        "type": "RELATED_TO"
+                        "type": "related_to"
                     })
                     
                     # Link book to concept
                     edges.append({
                         "source": str(highlight.book_id),
                         "target": concept_id,
-                        "type": "HAS_CONCEPT"
+                        "type": "has_concept"
                     })
     
     logger.info(
