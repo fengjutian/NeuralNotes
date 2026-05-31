@@ -1,4 +1,10 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import pathlib
+
+p = pathlib.Path('frontend/src/App.tsx')
+content = p.read_text(encoding='utf-8')
+
+# Replace the entire App component to wrap with ConfigProvider for dark mode
+new_app = '''import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout, ConfigProvider, theme as antdTheme } from 'antd'
 import ErrorBoundary from './components/ErrorBoundary'
 import AppLayout from './components/AppLayout'
@@ -52,3 +58,7 @@ function App() {
 }
 
 export default App
+'''
+
+p.write_text(new_app, encoding='utf-8')
+print('Updated App.tsx with dark mode ConfigProvider')

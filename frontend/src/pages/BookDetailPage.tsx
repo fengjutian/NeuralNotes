@@ -9,7 +9,7 @@ import {
   ArrowLeftOutlined, DeleteOutlined, LinkOutlined,
   EditOutlined, RobotOutlined, SearchOutlined
 } from "@ant-design/icons"
-import { bookApi, analyzeApi, type Book } from "../api"
+import { bookApi, analyzeApi, highlightApi, type Book } from "../api"
 import dayjs from "dayjs"
 
 const { Title, Text, Paragraph } = Typography
@@ -44,6 +44,18 @@ export default function BookDetailPage() {
     },
     onError: () => {
       message.error("删除失败")
+    },
+  })
+
+  const deleteHighlightMutation = useMutation({
+    mutationFn: (highlightId: string) => highlightApi.delete(highlightId),
+    onSuccess: () => {
+      message.success("笔记已删除")
+      queryClient.invalidateQueries({ queryKey: ["book", id, "highlights"] })
+      queryClient.invalidateQueries({ queryKey: ["book", id] })
+    },
+    onError: (err: any) => {
+      message.error("删除笔记失败: " + (err?.response?.data?.detail || err.message || ""))
     },
   })
 
@@ -83,6 +95,17 @@ export default function BookDetailPage() {
     } finally {
       setAnalyzing(false)
     }
+  }
+
+  const handleDeleteHighlight = (highlightId: string) => {
+    Modal.confirm({
+      title: "确认删除",
+      content: "确定要删除这条笔记吗？此操作不可撤销。",
+      okText: "确认",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: () => deleteHighlightMutation.mutate(highlightId),
+    })
   }
 
   const startEdit = () => {
@@ -262,7 +285,8 @@ export default function BookDetailPage() {
                   item.content
                 )}
               </Paragraph>
-              <Space wrap>
+              <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+                <Space wrap>
                 {item.chapter && (
                   <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
                     {highlightSearch ? (
@@ -279,6 +303,18 @@ export default function BookDetailPage() {
                     <LinkOutlined /> 原文链接
                   </a>
                 )}
+                </Space>
+                <Button
+                  type="text"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeleteHighlight(item.id)
+                  }}
+                  style={{ color: "rgba(255,255,255,0.5)", flexShrink: 0 }}
+                />
               </Space>
             </Card>
           )}

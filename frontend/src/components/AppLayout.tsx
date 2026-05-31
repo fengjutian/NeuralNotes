@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { Layout, Menu } from "antd"
+import { Layout, Menu, Button, Tooltip } from "antd"
 import {
   BookOutlined,
   UploadOutlined,
@@ -8,7 +8,9 @@ import {
   UserOutlined,
   ApartmentOutlined,
   ClockCircleOutlined,
+  BulbOutlined,
 } from "@ant-design/icons"
+import { useThemeStore } from "../store/themeStore"
 
 const { Sider, Content } = Layout
 
@@ -66,6 +68,7 @@ export default function AppLayout({ children }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const { darkMode, toggleDarkMode } = useThemeStore()
 
   const selectedKey = menuItems.find(
     (item) => location.pathname.startsWith(item.key)
@@ -113,9 +116,27 @@ export default function AppLayout({ children }: Props) {
           items={menuItems}
           onClick={handleMenuClick}
         />
+        <div style={{
+          position: "absolute",
+          bottom: 24,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+        }}>
+          <Tooltip title={darkMode ? "切换到浅色模式" : "切换到深色模式"} placement="right">
+            <Button
+              type="text"
+              icon={<BulbOutlined style={{ color: darkMode ? "#faad14" : "rgba(255,255,255,0.65)" }} />}
+              onClick={toggleDarkMode}
+              style={{ color: "rgba(255,255,255,0.85)" }}
+            >
+              {!collapsed && (darkMode ? "浅色模式" : "深色模式")}
+            </Button>
+          </Tooltip>
+        </div>
       </Sider>
       <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: "margin-left 0.2s" }}>
-        <Content style={{ background: "#f0f2f5" }}>
+        <Content style={{}}>
           {children}
         </Content>
       </Layout>

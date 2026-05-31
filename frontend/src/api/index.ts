@@ -214,6 +214,11 @@ export const graphApi = {
     api.get("/graph/concept/" + name),
 }
 
+export const highlightApi = {
+  delete: (highlightId: string) =>
+    api.delete("/highlights/" + highlightId),
+}
+
 export const analyzeApi = {
   trigger: (params: { book_id: string; highlight_ids?: string[] }) =>
     api.post("/analyze", params),
