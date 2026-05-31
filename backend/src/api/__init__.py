@@ -13,6 +13,7 @@ from src.api.timeline import router as timeline_router
 from src.api.sync import router as sync_router
 from src.api.mysql_graph import router as mysql_graph_router
 from src.api.highlights import router as highlights_router
+from src.api.export_routes import router as export_router
 
 # Create main API router
 api_router = APIRouter(prefix="/api/v1", redirect_slashes=False)
@@ -28,5 +29,6 @@ api_router.include_router(timeline_router, prefix="/timeline", tags=["Timeline"]
 api_router.include_router(sync_router, prefix="/sync", tags=["Sync"])
 api_router.include_router(mysql_graph_router, prefix="/mysql-graph", tags=["MySQL Graph"])
 api_router.include_router(highlights_router, prefix="/highlights", tags=["Highlights"])
+api_router.include_router(export_router, prefix="/export", tags=["Export"])
 
 __all__ = ["api_router"]
