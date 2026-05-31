@@ -1,4 +1,4 @@
-﻿import { useState } from "react"
+import { useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Layout, Menu } from "antd"
 import {
@@ -7,6 +7,7 @@ import {
   SearchOutlined,
   UserOutlined,
   ApartmentOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons"
 
 const { Sider, Content } = Layout
@@ -36,6 +37,12 @@ const menuItems: MenuItem[] = [
     icon: <SearchOutlined />,
     label: "搜索",
     path: "/search",
+  },
+  {
+    key: "/timeline",
+    icon: <ClockCircleOutlined />,
+    label: "时间线",
+    path: "/timeline",
   },
   {
     key: "/profile",

@@ -36,10 +36,19 @@ export interface Highlight {
   create_time?: string
   url?: string
   created_at: string
+  emotion?: string
+  domain?: string
 }
 
 export interface BookListResponse {
   items: Book[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface HighlightListResponse {
+  items: Highlight[]
   total: number
   page: number
   page_size: number
@@ -58,6 +67,7 @@ export interface SearchResult {
   content: string
   score: number
   book_title?: string
+  book_id?: string
   chapter?: string
 }
 
@@ -67,6 +77,72 @@ export interface Profile {
   categories: Record<string, number>
   reading_time_total: string
   recent_books: Book[]
+  _summary?: { avg_highlights_per_book: number }
+  _preferences?: {
+    favorite_categories: { name: string; count: number }[]
+    reading_emotions: { type: string; count: number }[]
+    domains_of_interest: { name: string; count: number }[]
+  }
+  _tendencies?: {
+    dominant_emotion: string
+    primary_domain: string
+  }
+}
+
+export interface Preferences {
+  categories: { name: string; count: number; percentage: number }[]
+  authors: { name: string; book_count: number }[]
+  topics: string[]
+  reading_times: { morning: number; afternoon: number; evening: number; night: number }
+}
+
+export interface BlindSpots {
+  missing_domains: string[]
+  suggestions: { type: string; message: string; priority: string }[]
+  stats: { active_domains: number; potential_domains: number; coverage_percentage: number }
+}
+
+export interface TimelineYear {
+  year: number
+  highlight_count: number
+  theme: string
+  dominant_domains: string[]
+  top_books: { title: string; highlights: number }[]
+}
+
+export interface TimelinePivotPoint {
+  year: number
+  type: string
+  message: string
+  highlight_count?: number
+  new_domains?: string[]
+  growth_rate?: number
+}
+
+export interface Timeline {
+  years: TimelineYear[]
+  pivot_points: TimelinePivotPoint[]
+  total_highlights: number
+  year_count: number
+}
+
+export interface GraphNode {
+  id: string
+  type: string
+  label: string
+  properties: Record<string, any>
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+  type: string
+  properties: Record<string, any>
+}
+
+export interface GraphData {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
 }
 
 // API Methods
@@ -77,6 +153,9 @@ export const bookApi = {
   get: (id: string) =>
     api.get<Book>("/books/" + id),
   
+  update: (id: string, data: Partial<Book>) =>
+    api.put<Book>("/books/" + id, data),
+
   delete: (id: string) =>
     api.delete("/books/" + id),
 
@@ -95,13 +174,57 @@ export const importApi = {
 }
 
 export const searchApi = {
-  search: (params: { q: string; limit?: number }) =>
-    api.get<SearchResult[]>("/search", { params }),
+  search: (params: { q: string; limit?: number; book_id?: string; min_score?: number }) =>
+    api.get<{ query: string; results: SearchResult[]; total: number; error?: string }>("/search", { params }),
+
+  aggregate: (topic: string, limit?: number) =>
+    api.post("/search/aggregate", null, { params: { topic, limit } }),
+
+  indexBook: (bookId: string) =>
+    api.post("/search/index", null, { params: { book_id: bookId } }),
 }
 
 export const profileApi = {
   get: () =>
     api.get<Profile>("/profile"),
+
+  getPreferences: () =>
+    api.get<Preferences>("/profile/preferences"),
+
+  getBlindSpots: () =>
+    api.get<BlindSpots>("/profile/blind-spots"),
+}
+
+export const timelineApi = {
+  get: (params?: { start_year?: number; end_year?: number }) =>
+    api.get<Timeline>("/timeline", { params }),
+
+  getPivotPoints: () =>
+    api.get<{ pivot_points: TimelinePivotPoint[]; count: number }>("/timeline/pivot-points"),
+}
+
+export const graphApi = {
+  get: (limit?: number) =>
+    api.get<GraphData>("/graph", { params: { limit } }),
+
+  getForBook: (bookId: string) =>
+    api.get<GraphData>("/graph/book/" + bookId),
+
+  getConcept: (name: string) =>
+    api.get("/graph/concept/" + name),
+}
+
+export const analyzeApi = {
+  trigger: (params: { book_id: string; highlight_ids?: string[] }) =>
+    api.post("/analyze", params),
+
+  getJobStatus: (jobId: string) =>
+    api.get("/analyze/" + jobId),
+}
+
+export const syncApi = {
+  syncAll: () =>
+    api.post("/sync/all"),
 }
 
 export default api
