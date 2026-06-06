@@ -7,9 +7,9 @@ import {
 } from "antd"
 import {
   ArrowLeftOutlined, DeleteOutlined, LinkOutlined,
-  EditOutlined, RobotOutlined, SearchOutlined
+  EditOutlined, RobotOutlined, SearchOutlined, ExportOutlined
 } from "@ant-design/icons"
-import { bookApi, analyzeApi, highlightApi, type Book } from "../api"
+import { bookApi, analyzeApi, highlightApi, exportApi, type Book } from "../api"
 import dayjs from "dayjs"
 
 const { Title, Text, Paragraph } = Typography
@@ -108,6 +108,22 @@ export default function BookDetailPage() {
     })
   }
 
+  const handleExport = async (format: string) => {
+    try {
+      const response = await exportApi.download(id!, format)
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${book?.title || "book"}_笔记.${format}`
+      link.click()
+      window.URL.revokeObjectURL(url)
+      message.success("导出成功！")
+    } catch (err: any) {
+      message.error("导出失败: " + (err?.message || ""))
+    }
+  }
+
   const startEdit = () => {
     if (!book) return
     form.setFieldsValue({
@@ -190,6 +206,14 @@ export default function BookDetailPage() {
               loading={analyzing}
             >
               AI 分析
+            </Button>
+          </Tooltip>
+          <Tooltip title="导出笔记为 Markdown 或文本">
+            <Button
+              icon={<ExportOutlined />}
+              onClick={() => handleExport("md")}
+            >
+              导出
             </Button>
           </Tooltip>
           <Button

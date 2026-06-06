@@ -214,6 +214,13 @@ export const graphApi = {
     api.get("/graph/concept/" + name),
 }
 
+export const exportApi = {
+  download: (bookId: string, format: string = "md") =>
+    api.get("/export/books/" + bookId + "/export/download?format=" + format, {
+      responseType: "blob",
+    }),
+}
+
 export const highlightApi = {
   delete: (highlightId: string) =>
     api.delete("/highlights/" + highlightId),
