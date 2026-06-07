@@ -138,22 +138,20 @@ def start_backend():
     # Determine Python executable in venv
     if os.name == "nt":  # Windows
         python_exe = BACKEND_DIR / "venv" / "Scripts" / "python.exe"
+        # Use start command to properly detach on Windows
+        cmd = f'start /B "" "{python_exe}" -m uvicorn src.main:app --host 127.0.0.1 --port {BACKEND_PORT} --reload'
+        subprocess.Popen(cmd, cwd=str(BACKEND_DIR), shell=True)
+        print(f"✅ Backend server started on http://127.0.0.1:{BACKEND_PORT}")
+        return None  # Don't track this process
     else:  # Unix
         python_exe = BACKEND_DIR / "venv" / "bin" / "python"
-    
-    if not python_exe.exists():
-        print(f"❌ Python executable not found at {python_exe}")
-        return None
-    
-    # Start uvicorn - output goes to terminal directly
-    backend_proc = subprocess.Popen(
-        [str(python_exe), "-m", "uvicorn", "src.main:app",
-         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--reload"],
-        cwd=str(BACKEND_DIR)
-    )
-    
-    print(f"✅ Backend server started on http://127.0.0.1:{BACKEND_PORT}")
-    return backend_proc
+        backend_proc = subprocess.Popen(
+            [str(python_exe), "-m", "uvicorn", "src.main:app",
+             "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--reload"],
+            cwd=str(BACKEND_DIR)
+        )
+        print(f"✅ Backend server started on http://127.0.0.1:{BACKEND_PORT}")
+        return backend_proc
 
 
 def start_frontend():
@@ -166,19 +164,19 @@ def start_frontend():
         print("❌ npm not found in PATH")
         return None
     
-    # Set environment to force specific port
-    env = os.environ.copy()
-    env["VITE_PORT"] = str(FRONTEND_PORT)
-    
-    # Start Vite dev server - output goes to terminal directly
-    frontend_proc = subprocess.Popen(
-        [npm_exe, "run", "dev"],
-        cwd=str(FRONTEND_DIR),
-        env=env
-    )
-    
-    print(f"✅ Frontend server starting on http://localhost:{FRONTEND_PORT}")
-    return frontend_proc
+    if os.name == "nt":  # Windows
+        # Use start command to properly detach on Windows
+        cmd = f'start /B "" "{npm_exe}" run dev'
+        subprocess.Popen(cmd, cwd=str(FRONTEND_DIR), shell=True)
+        print(f"✅ Frontend server starting on http://localhost:{FRONTEND_PORT}")
+        return None  # Don't track this process
+    else:  # Unix
+        frontend_proc = subprocess.Popen(
+            [npm_exe, "run", "dev"],
+            cwd=str(FRONTEND_DIR)
+        )
+        print(f"✅ Frontend server starting on http://localhost:{FRONTEND_PORT}")
+        return frontend_proc
 
 
 def main():
