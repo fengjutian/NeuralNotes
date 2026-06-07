@@ -7,11 +7,90 @@ import os
 import sys
 import subprocess
 import shutil
+import socket
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_PORT = 5174
+BACKEND_PORT = 8000
+
+
+def check_port(port):
+    """Check if a port is in use."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    try:
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+        return result == 0  # True if port is in use
+    except Exception:
+        return False
+
+
+def kill_port(port):
+    """Kill all processes using the specified port."""
+    try:
+        # Windows: use PowerShell to find and kill all processes on port
+        ps_script = f'''
+        $connections = Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue
+        if ($connections) {{
+            $pids = $connections | Select-Object -ExpandProperty OwningProcess -Unique
+            foreach ($pid in $pids) {{
+                Write-Host "Killing PID: $pid"
+                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            }}
+        }}
+        '''
+        result = subprocess.run(
+            ['powershell', '-Command', ps_script],
+            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        if 'Killing' in result.stdout:
+            print(f"   Killed processes on port {port}")
+            import time
+            time.sleep(1)  # Give OS time to release port
+            return True
+    except Exception as e:
+        print(f"   Failed to kill process on port {port}: {e}")
+    return False
+
+
+def check_ports(auto_kill=False):
+    """Check if required ports are available."""
+    frontend_in_use = check_port(FRONTEND_PORT)
+    backend_in_use = check_port(BACKEND_PORT)
+    
+    if not frontend_in_use and not backend_in_use:
+        return True
+    
+    if frontend_in_use:
+        print(f"⚠️  Port {FRONTEND_PORT} (frontend) is already in use")
+        if auto_kill:
+            kill_port(FRONTEND_PORT)
+            if check_port(FRONTEND_PORT):
+                print(f"❌ Failed to free port {FRONTEND_PORT}")
+                return False
+    
+    if backend_in_use:
+        print(f"⚠️  Port {BACKEND_PORT} (backend) is already in use")
+        if auto_kill:
+            kill_port(BACKEND_PORT)
+            if check_port(BACKEND_PORT):
+                print(f"❌ Failed to free port {BACKEND_PORT}")
+                return False
+    
+    # Recheck after killing
+    frontend_ok = not check_port(FRONTEND_PORT)
+    backend_ok = not check_port(BACKEND_PORT)
+    
+    if not frontend_ok:
+        print(f"❌ Port {FRONTEND_PORT} (frontend) is still in use")
+    if not backend_ok:
+        print(f"❌ Port {BACKEND_PORT} (backend) is still in use")
+    
+    return frontend_ok and backend_ok
 
 
 def check_node_modules():
@@ -66,17 +145,14 @@ def start_backend():
         print(f"❌ Python executable not found at {python_exe}")
         return None
     
-    # Start uvicorn
+    # Start uvicorn - output goes to terminal directly
     backend_proc = subprocess.Popen(
         [str(python_exe), "-m", "uvicorn", "src.main:app",
-         "--host", "127.0.0.1", "--port", "8000", "--reload"],
-        cwd=str(BACKEND_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True
+         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--reload"],
+        cwd=str(BACKEND_DIR)
     )
     
-    print("✅ Backend server started on http://127.0.0.1:8000")
+    print(f"✅ Backend server started on http://127.0.0.1:{BACKEND_PORT}")
     return backend_proc
 
 
@@ -90,16 +166,18 @@ def start_frontend():
         print("❌ npm not found in PATH")
         return None
     
-    # Start Vite dev server
+    # Set environment to force specific port
+    env = os.environ.copy()
+    env["VITE_PORT"] = str(FRONTEND_PORT)
+    
+    # Start Vite dev server - output goes to terminal directly
     frontend_proc = subprocess.Popen(
         [npm_exe, "run", "dev"],
         cwd=str(FRONTEND_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True
+        env=env
     )
     
-    print("✅ Frontend server starting on http://localhost:5174")
+    print(f"✅ Frontend server starting on http://localhost:{FRONTEND_PORT}")
     return frontend_proc
 
 
@@ -107,6 +185,13 @@ def main():
     print("=" * 50)
     print("NeuralNotes Startup Check")
     print("=" * 50)
+    
+    # Check ports first
+    print("\n🔍 Checking ports...")
+    if not check_ports(auto_kill=True):
+        print("\n❌ Port check failed.")
+        sys.exit(1)
+    print(f"✅ Ports {FRONTEND_PORT} and {BACKEND_PORT} are available")
     
     # Run dependency checks
     checks_passed = True
@@ -129,8 +214,8 @@ def main():
     frontend_proc = start_frontend()
     
     print("\n✅ All servers started successfully!")
-    print("   Frontend: http://localhost:5174")
-    print("   Backend:  http://127.0.0.1:8000")
+    print(f"   Frontend: http://localhost:{FRONTEND_PORT}")
+    print(f"   Backend:  http://127.0.0.1:{BACKEND_PORT}")
     print("\nPress Ctrl+C to stop all servers")
     
     try:
