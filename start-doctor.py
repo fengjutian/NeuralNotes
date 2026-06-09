@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_PORT = 5174
-BACKEND_PORT = 8000
+BACKEND_PORT = 8020
 
 
 def check_port(port):
@@ -138,11 +138,19 @@ def start_backend():
     # Determine Python executable in venv
     if os.name == "nt":  # Windows
         python_exe = BACKEND_DIR / "venv" / "Scripts" / "python.exe"
-        # Use start command to properly detach on Windows
-        cmd = f'start /B "" "{python_exe}" -m uvicorn src.main:app --host 127.0.0.1 --port {BACKEND_PORT} --reload'
-        subprocess.Popen(cmd, cwd=str(BACKEND_DIR), shell=True)
+        # Output to files - use append mode and don't close handles
+        stdout_file = open(PROJECT_ROOT / "backend_out.log", "a")
+        stderr_file = open(PROJECT_ROOT / "backend_err.log", "a")
+        backend_proc = subprocess.Popen(
+            [str(python_exe), "-m", "uvicorn", "src.main:app",
+             "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--reload"],
+            cwd=str(BACKEND_DIR),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            bufsize=1  # Line buffered
+        )
         print(f"✅ Backend server started on http://127.0.0.1:{BACKEND_PORT}")
-        return None  # Don't track this process
+        return backend_proc
     else:  # Unix
         python_exe = BACKEND_DIR / "venv" / "bin" / "python"
         backend_proc = subprocess.Popen(
@@ -165,11 +173,17 @@ def start_frontend():
         return None
     
     if os.name == "nt":  # Windows
-        # Use start command to properly detach on Windows
-        cmd = f'start /B "" "{npm_exe}" run dev'
-        subprocess.Popen(cmd, cwd=str(FRONTEND_DIR), shell=True)
+        stdout_file = open(PROJECT_ROOT / "frontend_out.log", "a")
+        stderr_file = open(PROJECT_ROOT / "frontend_err.log", "a")
+        frontend_proc = subprocess.Popen(
+            [npm_exe, "run", "dev"],
+            cwd=str(FRONTEND_DIR),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            bufsize=1  # Line buffered
+        )
         print(f"✅ Frontend server starting on http://localhost:{FRONTEND_PORT}")
-        return None  # Don't track this process
+        return frontend_proc
     else:  # Unix
         frontend_proc = subprocess.Popen(
             [npm_exe, "run", "dev"],
