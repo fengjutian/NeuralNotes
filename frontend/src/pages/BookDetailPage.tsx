@@ -1,4 +1,4 @@
-﻿import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -81,66 +81,83 @@ export default function BookDetailPage() {
     })
   }
 
+  const handleDeleteHighlight = (highlightId: string) => {
+    Modal.confirm({
+      title: "确认删除",
+      content: "确定要删除这条笔记吗？",
+      okText: "确认",
+      cancelText: "取消",
+      onOk: () => deleteHighlightMutation.mutate(highlightId),
+    })
+  }
+
   const handleAnalyze = async () => {
     setAnalyzing(true)
     try {
-      message.loading("AI 正在分析中，请稍候...", 0)
       const response = await analyzeApi.trigger({ book_id: id! })
-      const analyzedCount = (response.data as any)?.total || 0
-      message.destroy()
-      message.success(`AI 分析完成！已分析 ${analyzedCount} 条笔记`)
+      message.success("AI 分析完成！已分析 " + (response.data?.total || 0) + " 条笔记")
+      queryClient.invalidateQueries({ queryKey: ["book", id, "highlights"] })
     } catch (err: any) {
-      message.destroy()
       message.error("分析失败: " + (err?.response?.data?.detail || err.message || "请稍后重试"))
     } finally {
       setAnalyzing(false)
     }
   }
 
-  const handleDeleteHighlight = (highlightId: string) => {
-    Modal.confirm({
-      title: "确认删除",
-      content: "确定要删除这条笔记吗？此操作不可撤销。",
-      okText: "确认",
-      cancelText: "取消",
-      okButtonProps: { danger: true },
-      onOk: () => deleteHighlightMutation.mutate(highlightId),
-    })
-  }
-
-  const handleExport = async (format: string) => {
+  const handleExport = async (format: string = "md") => {
     try {
       const response = await exportApi.download(id!, format)
-      const blob = response.data as Blob
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: "text/markdown" })
       const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${book?.title || "book"}_笔记.${format}`
-      link.click()
+      const a = document.createElement("a")
+      a.href = url
+      const bookTitle = bookData?.data?.title || "untitled"
+      a.download = `${bookTitle}.md`
+      a.click()
       window.URL.revokeObjectURL(url)
-      message.success("导出成功！")
+      message.success("导出成功")
     } catch (err: any) {
       message.error("导出失败: " + (err?.message || ""))
     }
   }
 
   const startEdit = () => {
-    if (!book) return
-    form.setFieldsValue({
-      title: book.title,
-      author: book.author,
-      category: book.category || "",
-      reading_time: book.reading_time || "",
-      progress: book.progress || 0,
-    })
+    if (bookData?.data) {
+      form.setFieldsValue({
+        title: bookData.data.title,
+        author: bookData.data.author,
+        category: bookData.data.category,
+        reading_time: bookData.data.reading_time,
+        progress: bookData.data.progress,
+      })
+    }
     setEditMode(true)
   }
 
-  const handleEditSubmit = () => {
-    form.validateFields().then((values) => {
+  const handleEditSubmit = async () => {
+    try {
+      const values = await form.validateFields()
       updateMutation.mutate(values)
-    })
+    } catch (err: any) {
+      if (err?.errorFields) return // form validation error
+      message.error("更新失败: " + (err?.response?.data?.detail || err.message))
+    }
   }
+
+  const book = bookData?.data
+  const highlights = highlightsData?.data?.items || []
+
+  const filteredHighlights = useMemo(() => {
+    if (!highlightSearch.trim()) return highlights
+    const lower = highlightSearch.toLowerCase()
+    return highlights.filter(
+      (h: any) =>
+        h.content.toLowerCase().includes(lower) ||
+        (h.chapter && h.chapter.toLowerCase().includes(lower))
+    )
+  }, [highlights, highlightSearch])
 
   if (isLoading) {
     return (
@@ -153,9 +170,7 @@ export default function BookDetailPage() {
   if (error) {
     return (
       <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/books")}>
-          返回书架
-        </Button>
+        <Title level={2}>书籍详情</Title>
         <Alert
           type="error"
           message="加载失败"
@@ -164,33 +179,14 @@ export default function BookDetailPage() {
           action={
             <Button onClick={() => refetch()}>重试</Button>
           }
-          style={{ marginTop: 16 }}
         />
       </div>
     )
   }
 
-  const book = bookData?.data
-
   if (!book) {
-    return (
-      <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/books")}>
-          返回书架
-        </Button>
-        <Empty description="书籍不存在" style={{ marginTop: 40 }} />
-      </div>
-    )
+    return <Empty description="书籍不存在" />
   }
-
-  const highlights = highlightsData?.data?.items || []
-
-  const filteredHighlights = highlightSearch.trim()
-    ? highlights.filter((h: any) =>
-        h.content.toLowerCase().includes(highlightSearch.toLowerCase()) ||
-        (h.chapter && h.chapter.toLowerCase().includes(highlightSearch.toLowerCase()))
-      )
-    : highlights
 
   return (
     <div>

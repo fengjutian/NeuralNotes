@@ -1,13 +1,13 @@
-"""AI Reading Profile service.
+"""Reading Profile service.
 
 Generates reading persona, preferences, cognitive style analysis and blind spots.
+Uses rule-based statistical analysis (no LLM calls).
 """
 
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
-from src.services.llm_provider import LLMProvider
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -51,20 +51,14 @@ class ProfileService:
 
     MIN_BOOKS_FOR_PROFILE = 3
 
-    def __init__(self, llm_provider: Optional[LLMProvider] = None) -> None:
-        """Initialize profile service.
-
-        Args:
-            llm_provider: LLM provider for profile generation.
-        """
-        self.llm_provider = llm_provider or LLMProvider()
+    def __init__(self) -> None:
+        """Initialize profile service."""
         self.logger = get_logger(self.__class__.__name__)
 
     def generate_profile(
         self,
         books: list[dict[str, Any]],
         concepts: list[dict[str, Any]],
-        highlights: Optional[list[dict[str, Any]]] = None,
     ) -> ReadingProfile:
         """Generate a comprehensive reading profile.
 

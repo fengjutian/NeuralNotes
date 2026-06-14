@@ -29,7 +29,7 @@ class HighlightService:
         """
         logger.info("Creating highlight for book: %s", highlight_data.book_id)
         highlight = Highlight(
-            book_id=highlight_data.book_id,
+            book_id=str(highlight_data.book_id),
             content=highlight_data.content,
             chapter=highlight_data.chapter,
             create_time=highlight_data.create_time,

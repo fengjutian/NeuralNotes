@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.services.vector_service import vector_service
 from src.services.book_service import book_service
+from src.services.highlight_service import highlight_service
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -141,7 +142,7 @@ async def index_highlights(
     logger.info("Indexing highlights for book: %s", book_id)
     
     from uuid import UUID
-    highlights = db.query("Highlight").filter("book_id = :book_id", book_id=book_id).all()
+    highlights, _ = highlight_service.get_by_book(db, UUID(book_id), limit=10000)
     
     # Index each highlight
     highlights_data = []

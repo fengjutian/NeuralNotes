@@ -1,4 +1,8 @@
-"""Reading Profile API endpoints."""
+"""Reading Profile API endpoints.
+
+Delegates statistical analysis to ProfileService for preferences,
+cognitive style, and blind spot detection.
+"""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -7,7 +11,7 @@ from sqlalchemy import select, func
 from src.database import get_db
 from src.models.book import Book
 from src.models.highlight import Highlight
-from src.services.graph_service import graph_service
+from src.services.profile_service import profile_service
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,27 +19,85 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/")
-async def get_profile(
-    db: Session = Depends(get_db),
-) -> dict:
-    """Get AI-generated reading profile.
+def _collect_concepts(db: Session) -> list[dict]:
+    """Collect concepts from analysed highlights.
 
     Args:
         db: Database session.
 
     Returns:
-        Reading profile with preferences, tendencies, and suggestions.
+        List of concept dicts with 'name' and 'domain' keys.
+    """
+    concepts: list[dict] = []
+    # Fetch highlights that have concepts extracted
+    stmt = (
+        select(Highlight.concepts, Highlight.domain)
+        .where(Highlight.concepts.isnot(None))
+    )
+    rows = db.execute(stmt).all()
+    for concepts_json, domain in rows:
+        if isinstance(concepts_json, list):
+            for name in concepts_json:
+                if isinstance(name, str) and name.strip():
+                    concepts.append({
+                        "name": name.strip(),
+                        "domain": domain,
+                    })
+
+    # Also include highlights that have domain but no explicit concepts
+    domain_stmt = (
+        select(Highlight.domain)
+        .where(Highlight.domain.isnot(None), Highlight.concepts.is_(None))
+        .distinct()
+    )
+    domain_rows = db.execute(domain_stmt).scalars().all()
+    for domain in domain_rows:
+        if domain and domain.strip():
+            concepts.append({
+                "name": domain,
+                "domain": domain,
+            })
+
+    return concepts
+
+
+def _collect_books(db: Session) -> list[dict]:
+    """Collect all books as dicts for profile_service input.
+
+    Args:
+        db: Database session.
+
+    Returns:
+        List of book dicts with category and author.
+    """
+    stmt = select(Book.category, Book.author)
+    rows = db.execute(stmt).all()
+    return [
+        {"category": cat, "author": author}
+        for cat, author in rows
+    ]
+
+
+@router.get("/")
+async def get_profile(
+    db: Session = Depends(get_db),
+) -> dict:
+    """Get reading profile with stats, preferences, cognitive style.
+
+    Args:
+        db: Database session.
+
+    Returns:
+        Reading profile with preferences, tendencies, cognitive style,
+        and suggestions.
     """
     logger.info("Get reading profile")
-    
-    # Get book count
+
+    # --- Fast SQL stats ---
     book_count = db.execute(select(func.count(Book.id))).scalar_one()
-    
-    # Get highlight count
     highlight_count = db.execute(select(func.count(Highlight.id))).scalar_one()
-    
-    # Get category distribution
+
+    # Category distribution
     category_query = (
         select(Book.category, func.count(Book.id).label("count"))
         .group_by(Book.category)
@@ -43,8 +105,8 @@ async def get_profile(
     )
     category_results = db.execute(category_query).all()
     categories = {r[0] or "Unknown": r[1] for r in category_results}
-    
-    # Get emotional distribution
+
+    # Emotional distribution
     emotion_query = (
         select(Highlight.emotion, func.count(Highlight.id).label("count"))
         .where(Highlight.emotion.isnot(None))
@@ -56,8 +118,8 @@ async def get_profile(
         {"type": r[0] or "Unknown", "count": r[1]}
         for r in emotion_results
     ]
-    
-    # Get domain distribution
+
+    # Domain distribution
     domain_query = (
         select(Highlight.domain, func.count(Highlight.id).label("count"))
         .where(Highlight.domain.isnot(None))
@@ -69,23 +131,38 @@ async def get_profile(
         {"name": r[0] or "Unknown", "count": r[1]}
         for r in domain_results
     ]
-    
+
+    # --- ProfileService analysis ---
+    concepts = _collect_concepts(db)
+    cognitive_style = profile_service.analyze_cognitive_style(concepts)
+
+    books_list = _collect_books(db)
+    preferences = profile_service.analyze_preferences(books_list, concepts)
+
     return {
         "total_books": book_count,
         "total_highlights": highlight_count,
         "categories": categories,
         "reading_time_total": "0",
         "recent_books": [
-            {"id": str(book.id), "title": book.title, "author": book.author or "Unknown", "created_at": book.created_at.isoformat() if book.created_at else ""}
-            for book in db.execute(select(Book).order_by(Book.created_at.desc()).limit(5)).scalars().all()
+            {
+                "id": str(book.id),
+                "title": book.title,
+                "author": book.author or "Unknown",
+                "created_at": book.created_at.isoformat() if book.created_at else "",
+            }
+            for book in db.execute(
+                select(Book).order_by(Book.created_at.desc()).limit(5)
+            ).scalars().all()
         ],
         "_summary": {
-            "avg_highlights_per_book": highlight_count / book_count if book_count > 0 else 0,
+            "avg_highlights_per_book": (
+                highlight_count / book_count if book_count > 0 else 0
+            ),
         },
         "_preferences": {
-            "favorite_categories": [
-                {"name": name, "count": count} for name, count in list(categories.items())[:5]
-            ],
+            "favorite_categories": preferences.get("categories", [])[:5],
+            "top_authors": preferences.get("top_authors", [])[:5],
             "reading_emotions": emotions,
             "domains_of_interest": domains[:10] if domains else [],
         },
@@ -93,6 +170,7 @@ async def get_profile(
             "dominant_emotion": emotions[0]["type"] if emotions else "neutral",
             "primary_domain": domains[0]["name"] if domains else "general",
         },
+        "_cognitive_style": cognitive_style,
     }
 
 
@@ -100,7 +178,7 @@ async def get_profile(
 async def get_preferences(
     db: Session = Depends(get_db),
 ) -> dict:
-    """Get detailed reading preferences.
+    """Get detailed reading preferences via ProfileService.
 
     Args:
         db: Database session.
@@ -109,16 +187,7 @@ async def get_preferences(
         Reading preferences breakdown.
     """
     logger.info("Get reading preferences")
-    
-    # Get top authors
-    author_query = (
-        select(Book.author, func.count(Book.id).label("count"))
-        .group_by(Book.author)
-        .order_by(func.count(Book.id).desc())
-    )
-    author_results = db.execute(author_query).all()
-    top_authors = [{"name": r[0], "book_count": r[1]} for r in author_results[:10]]
-    
+
     # Get categories with percentages
     total_books = db.execute(select(func.count(Book.id))).scalar_one()
     category_query = (
@@ -135,18 +204,16 @@ async def get_preferences(
         }
         for r in category_results
     ]
-    
-    # Get time distribution
-    time_query = (
-        select(Highlight.create_time)
-        .where(Highlight.create_time.isnot(None))
-    )
-    times = db.execute(time_query).scalars().all()
-    
+
+    # ProfileService analysis
+    books_list = _collect_books(db)
+    concepts = _collect_concepts(db)
+    preferences = profile_service.analyze_preferences(books_list, concepts)
+
     return {
         "categories": categories,
-        "authors": top_authors,
-        "topics": [],  # Would be extracted from concepts
+        "authors": preferences.get("top_authors", []),
+        "topics": preferences.get("top_concepts", []),
         "reading_times": {
             "morning": 0,
             "afternoon": 0,
@@ -160,7 +227,7 @@ async def get_preferences(
 async def get_blind_spots(
     db: Session = Depends(get_db),
 ) -> dict:
-    """Get reading blind spots and improvement suggestions.
+    """Get reading blind spots via ProfileService (20-domain analysis).
 
     Args:
         db: Database session.
@@ -169,23 +236,37 @@ async def get_blind_spots(
         Identified blind spots with recommendations.
     """
     logger.info("Get blind spots")
-    
-    # Get all unique domains from highlights
+
+    # Get all unique domains from highlights (for stats)
     domain_query = (
         select(Highlight.domain)
         .where(Highlight.domain.isnot(None))
         .distinct()
     )
     active_domains = set(db.execute(domain_query).scalars().all())
-    
-    # Common knowledge domains that might be missing
-    common_domains = [
-        "哲学", "心理学", "经济学", "历史", "科技",
-        "文学", "艺术", "科学", "社会学", "政治"
-    ]
-    
-    missing_domains = [d for d in common_domains if d not in active_domains]
-    
+
+    # ProfileService blind spot analysis (20 domains)
+    books_list = _collect_books(db)
+    concepts = _collect_concepts(db)
+    blind_spots = profile_service.detect_blind_spots(books_list, concepts)
+
+    # Convert to response format
+    missing_domains = [spot["domain"] for spot in blind_spots]
+    suggestions = []
+    for spot in blind_spots:
+        priority = spot.get("severity", "medium")
+        if priority == "low":
+            priority = "low"
+        elif priority == "high":
+            priority = "high"
+        else:
+            priority = "medium"
+        suggestions.append({
+            "type": "explore_new_domains",
+            "message": spot["suggestion"],
+            "priority": priority,
+        })
+
     # Get books without highlights
     empty_books_query = (
         select(Book)
@@ -194,24 +275,29 @@ async def get_blind_spots(
         .having(func.count(Highlight.id) == 0)
     )
     empty_books = db.execute(empty_books_query).scalars().all()
-    
+    if empty_books:
+        suggestions.append({
+            "type": "incomplete_reading",
+            "message": f"You have {len(empty_books)} books without highlights",
+            "priority": "medium",
+        })
+
+    # All possible domains from the service (20 domains)
+    all_possible_domains = {
+        "管理学", "心理学", "哲学", "经济学", "历史",
+        "文学", "社会学", "物理学", "生物学", "数学",
+        "AI", "计算机科学", "教育学", "政治学", "法学",
+        "医学", "艺术", "宗教", "伦理", "环境学",
+    }
+
     return {
         "missing_domains": missing_domains,
-        "suggestions": [
-            {
-                "type": "explore_new_domains",
-                "message": f"Consider exploring: {', '.join(missing_domains[:3])}",
-                "priority": "high" if len(missing_domains) > 5 else "medium",
-            },
-            {
-                "type": "incomplete_reading",
-                "message": f"You have {len(empty_books)} books without highlights",
-                "priority": "medium",
-            },
-        ],
+        "suggestions": suggestions,
         "stats": {
             "active_domains": len(active_domains),
-            "potential_domains": len(common_domains),
-            "coverage_percentage": round(len(active_domains) / len(common_domains) * 100, 2),
+            "potential_domains": len(all_possible_domains),
+            "coverage_percentage": round(
+                len(active_domains) / len(all_possible_domains) * 100, 2
+            ),
         },
     }

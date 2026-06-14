@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.schemas import BookListResponse, BookResponse
-from src.schemas.book import BookCreate
+from src.schemas.book import BookCreate, BookUpdate
 from src.schemas.highlight import HighlightResponse, HighlightListResponse
 from src.services.highlight_service import highlight_service
 from src.services.book_service import book_service
@@ -104,6 +104,33 @@ async def create_book(
     book = book_service.create(db, book_data)
     response = BookResponse.model_validate(book)
     response.highlight_count = 0
+    return response
+
+
+@router.put("/{book_id}", response_model=BookResponse)
+async def update_book(
+    book_id: UUID,
+    book_data: BookUpdate,
+    db: Session = Depends(get_db),
+) -> BookResponse:
+    """Update a book.
+
+    Args:
+        book_id: Book UUID.
+        book_data: Book update data.
+        db: Database session.
+
+    Returns:
+        Updated book details.
+    """
+    logger.info("Update book: %s", book_id)
+
+    book = book_service.update(db, book_id, book_data)
+    if not book:
+        raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+
+    response = BookResponse.model_validate(book)
+    response.highlight_count = len(book.highlights) if book.highlights else 0
     return response
 
 
